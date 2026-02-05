@@ -68,7 +68,7 @@ ignore = [
 [lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
-"app/**/test_*.py" = ["S101"]  # Allow assert in app test files
+"worker/**/test_*.py" = ["S101"]  # Allow assert in worker test files
 "worker/config.py" = ["S108"]  # Allow /tmp for debug output
 "worker/main.py" = ["S104"]  # Allow 0.0.0.0 binding for container
 "worker/models/domain.py" = ["N815"]  # Scientific unit naming convention (_L_, _mg_L)
