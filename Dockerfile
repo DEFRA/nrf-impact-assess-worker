@@ -1,59 +1,52 @@
-# Set default values for build arguments
-ARG PARENT_VERSION=latest-3.12
-ARG PORT=8085
-ARG PORT_DEBUG=8086
+# See: cdp-python-backend-template for production-ready Dockerfile patterns
 
-FROM defradigital/python-development:${PARENT_VERSION} AS development
+ARG PARENT_VERSION=2.0.1-python3.13.9
 
-ENV PATH="/home/nonroot/.venv/bin:${PATH}"
-ENV LOG_CONFIG="logging-dev.json"
+FROM defradigital/python:${PARENT_VERSION} AS builder
 
-WORKDIR /home/nonroot
+# Install UV
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY --chown=nonroot:nonroot pyproject.toml .
-COPY --chown=nonroot:nonroot README.md .
-COPY --chown=nonroot:nonroot uv.lock .
-COPY --chown=nonroot:nonroot app/ ./app/
+WORKDIR /app
 
-RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=1000,gid=1000 \
-    uv sync --locked --link-mode=copy
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
 
-COPY --chown=nonroot:nonroot logging-dev.json .
+# Install dependencies (without dev dependencies)
+RUN uv sync --frozen --no-dev
 
-ARG PORT=8085
-ARG PORT_DEBUG=8086
-ENV PORT=${PORT}
-EXPOSE ${PORT} ${PORT_DEBUG}
-
-CMD [ "-m", "app.main" ]
+# ---
 
 FROM defradigital/python:${PARENT_VERSION} AS production
 
-ENV PATH="/home/nonroot/.venv/bin:${PATH}"
-ENV LOG_CONFIG="logging.json"
-
 USER root
 
-RUN apt update && \
-    apt install -y curl
+# Install GDAL runtime libraries (no dev packages needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gdal-bin \
+    libgdal36 \
+    && rm -rf /var/lib/apt/lists/*
 
 USER nonroot
 
-WORKDIR /home/nonroot
+WORKDIR /app
 
-COPY --from=development /home/nonroot/pyproject.toml .
-COPY --chown=nonroot:nonroot README.md .
-COPY --from=development /home/nonroot/uv.lock .
-COPY --from=development /home/nonroot/app ./app
+# Copy UV and virtual environment from builder
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=builder /app/.venv .venv/
 
-COPY logging.json .
+# Copy application code
+COPY worker/ ./worker/
 
-RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=1000,gid=1000 \
-    --mount=from=development,source=/home/nonroot/.local/bin/uv,target=/home/nonroot/.local/bin/uv \
-    uv sync --locked --compile-bytecode --link-mode=copy --no-dev
+# Reference data stored on EFS (mounted at runtime by ECS)
+# EFS will be mounted at /data by ECS task definition
+# NOTE: EFS permissions must allow read access for the container user
+ENV IAT_DATA_BASE_PATH=/data
 
-ARG PORT
-ENV PORT=${PORT}
-EXPOSE ${PORT}
+# Set environment variables
+ENV PATH="/app/.venv/bin:${PATH}"
+ENV PYTHONUNBUFFERED=1
 
-CMD [ "-m", "app.main" ]
+# Run worker
+CMD ["python", "-m", "worker.main"]

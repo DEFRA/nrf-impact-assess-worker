@@ -19,21 +19,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Test code and Create Test Coverage Reports
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.12
-          cache: 'pip'
-      - run: |
-          pipx install uv
-          uv sync --frozen
-          uv run ruff check
-          uv run pytest
+          python-version: 3.13
+
+      - name: Install uv
+        run: pipx install uv
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint with ruff
+        run: uv run ruff check
+
+      - name: Run tests
+        run: uv run pytest
 
       - name: Test Docker Image Build
         run: |
           set +e
-          docker build --no-cache --tag cdp-python-backend-template .
+          docker build --no-cache --tag nrf-impact-assessment-worker .
           exit $?
 
 #      - name: SonarCloud Scan

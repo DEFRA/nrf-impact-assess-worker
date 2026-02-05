@@ -1,8 +1,8 @@
 # Same as Black
-line-length = 88
+line-length = 100
 
-# Assume Python 3.12
-target-version = "py312"
+# Assume Python 3.13
+target-version = "py313"
 
 [lint]
 # Enable a comprehensive set of rules
@@ -60,20 +60,41 @@ ignore = [
     "E501",  # line too long, handled by formatter
     "B008",  # do not perform function calls in argument defaults
     "COM812", # missing trailing comma, conflicts with formatter
+    "G004",  # allow f-strings in logging for readability
+    "S608",  # SQL injection warning - false positive for controlled inputs
 ]
 
-# Ignore `E402` (import violations) in all `__init__.py` files
+# Per-file rule ignores
 [lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
-"tests/**/*.py" = ["S101"]  # Allow assert in tests
-"app/**/test_*.py" = ["S101"]  # Allow assert in app test files
+"tests/**/*.py" = [
+    "S101",   # Allow assert in tests
+    "S603",   # Allow subprocess calls in tests
+    "S607",   # Allow partial executable paths in tests
+    "ARG001", # Allow unused fixture arguments (needed for setup)
+    "ARG002", # Allow unused method arguments (fixtures in test classes)
+    "N806",   # Allow uppercase variable names (Mock classes)
+    "PT003",  # Allow explicit scope='function' for clarity
+    "PT011",  # Allow broad pytest.raises
+    "DTZ001", # Allow datetime without timezone in tests
+    "DTZ005", # Allow datetime.now without timezone in tests
+    "EM102",  # Allow f-string in exceptions in tests
+    "C901",   # Allow complex test setup functions
+    "SIM102", # Allow nested if for readability in test assertions
+]
+"worker/**/test_*.py" = ["S101"]  # Allow assert in worker test files
+"worker/config.py" = ["S108"]  # Allow /tmp for debug output
+"worker/main.py" = ["S104"]  # Allow 0.0.0.0 binding for container
+"worker/models/domain.py" = ["N815"]  # Scientific unit naming convention (_L_, _mg_L)
+"scripts/load_data.py" = ["C901"]  # Complex functions acceptable in data loading script
+"scripts/submit_job.py" = ["S106"]  # Hardcoded credentials intentional for LocalStack testing
 
 # Enable auto-fixing
 fixable = ["ALL"]
 unfixable = []
 
 [lint.isort]
-known-third-party = ["fastapi", "pydantic", "motor", "pytest"]
+known-third-party = ["fastapi", "pydantic", "pytest"]
 
 [format]
 # Like Black, use double quotes for strings

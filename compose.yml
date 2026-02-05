@@ -1,91 +1,137 @@
 services:
   localstack:
-    image: localstack/localstack:4.9.2
+    image: localstack/localstack:4.12.0
     ports:
-      - "4566:4566" # LocalStack Gateway
-      - "4510-4559:4510-4559" # external services port range
-    env_file:
-      - "compose/aws.env"
+      - "4566:4566"  # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
     environment:
       DEBUG: ${DEBUG:-1}
-      LS_LOG: WARN # Localstack DEBUG Level
-      SERVICES: s3,sqs,sns,firehose
+      LS_LOG: WARN  # LocalStack log level
+      SERVICES: s3,sqs
       LOCALSTACK_HOST: 127.0.0.1
     volumes:
       - "${TMPDIR:-/tmp}/localstack:/var/lib/localstack"
-      - ./compose/start-localstack.sh:/etc/localstack/init/ready.d/start-localstack.sh
+      - ./compose/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
     healthcheck:
-      test: ["CMD", "curl", "localhost:4566"]
+      test: ["CMD", "curl", "http://localhost:4566/_localstack/health"]
       interval: 5s
       start_period: 5s
       retries: 3
     networks:
-      - cdp-tenant
+      - nrf-worker
 
-  mongodb:
-    image: mongo:6.0.13
-    networks:
-      - cdp-tenant
+  postgres:
+    image: postgis/postgis:16-3.4
+    # Uncomment if you see platform mismatch warnings (e.g. on Apple Silicon Macs)
+    # platform: linux/${DOCKER_DEFAULT_PLATFORM:-arm64}
+    container_name: nrf-postgis
     ports:
-      - "27017:27017"
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: nrf_impact
+      POSTGRES_HOST_AUTH_METHOD: trust  # No password for local dev
     volumes:
-      - mongodb-data:/data
-    restart: always
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d nrf_impact"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nrf-worker
 
-  service:
+  worker:
     build:
       context: .
-      target: development
+      target: production
+    container_name: nrf-worker
     ports:
-      - 8085:8085
-    links:
-      - "localstack:localstack"
-      - "mongodb:mongodb"
+      - "8085:8085"
     depends_on:
       localstack:
         condition: service_healthy
-      mongodb:
-        condition: service_started
-    profiles:
-      - service
+      postgres:
+        condition: service_healthy
     env_file:
       - "compose/aws.env"
-      - "compose/secrets.env"
-    environment:
-      PORT: ${PORT:-8085}
-      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
-      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/}
-      HOST: ${HOST:-0.0.0.0}
-    develop:
-      watch:
-        - action: sync
-          path: ./app
-          target: /home/nonroot/app
-          ignore:
-            - README.md
-            - "**/*.md"
-            - "**/test_*.py"
-            - tests/**/*
-            - .git/**/*
-            - .venv/**/*
-            - .pytest_cache/**/*
-            - .ruff_cache/**/*
-            - .vscode/**/*
-            - .github/**/*
-            - requirements-dev.txt
-            - pytest.ini
-            - .pre-commit-config.yaml
-            - sonar-project.properties
-            - LICENCE
-        - action: rebuild
-          path: ./pyproject.toml
-          target: /home/nonroot/pyproject.toml
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1g
+    volumes:
+      - ./iat_input:/data:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085/health | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
-      - cdp-tenant
+      - nrf-worker
+
+  # Monitoring Stack
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nrf-metrics-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: metrics
+      POSTGRES_USER: metrics
+      POSTGRES_PASSWORD: metrics_password
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./compose/init-timescale.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metrics -d metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nrf-worker
+
+  vector:
+    build:
+      context: .
+      dockerfile: Dockerfile.vector
+    container_name: nrf-vector
+    ports:
+      - "8686:8686"
+    environment:
+      DOCKER_API_VERSION: "1.43"  # Match host Docker daemon API version
+    volumes:
+      - ./compose/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Access to Docker API
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - nrf-worker
+
+  grafana:
+    image: grafana/grafana:11.6.10
+    container_name: nrf-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./compose/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - nrf-worker
+    depends_on:
+      timescaledb:
+        condition: service_healthy
 
 volumes:
-  mongodb-data:
+  postgres-data:
+  timescale-data:
+  grafana-data:
 
 networks:
-  cdp-tenant:
+  nrf-worker:
     driver: bridge
