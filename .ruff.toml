@@ -1,5 +1,5 @@
 # Same as Black
-line-length = 88
+line-length = 100
 
 # Assume Python 3.12
 target-version = "py312"

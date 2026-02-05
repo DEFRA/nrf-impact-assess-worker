@@ -1,25 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nrf-impact-assess-worker"
-version = "0.1.0"
+version = "0.2.0"
 description = "nrf-impact-assess-worker"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "asgi-logger==0.1.0",
+    "alembic>=1.18.3",
+    "alembic-postgresql-enum>=1.8.0",
+    "boto3>=1.42.39",
+    "email-validator>=2.2.0",
+    "fastapi==0.115.12",
+    "geoalchemy2>=0.18.0",
+    "geopandas>=1.1.1",
+    "psycopg2-binary>=2.9.11",
+    "pydantic>=2.12.0",
+    "pydantic-settings>=2.11.0",
+    "sqlalchemy>=2.0.44",
+    "typer>=0.19.2",
+     "asgi-logger==0.1.0",
     "aws-embedded-metrics==3.3.0",
     "dnspython==2.7.0",
     "ecs-logging==2.2.0",
-    "fastapi==0.115.12",
     "httpx==0.28.1",
-    "pydantic-settings==2.9.1",
-    "pymongo[aws,encryption,snappy,zstd]==4.13.1",
     "uvicorn==0.34.3",
 ]
 
+[tool.setuptools.packages.find]
+include = ["worker*"]
+exclude = ["legacy*", "iat_input*", "alembic*", "tests*"]
+
 [dependency-groups]
 dev = [
-    "httpx==0.28.1",
-    "pre-commit==4.2.0",
+    "moto[s3,sqs]>=5.0.0",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+     "pre-commit==4.2.0",
     "pytest==8.4.0",
     "pytest-asyncio==1.0.0",
     "pytest-cov==6.2.1",
@@ -28,5 +47,17 @@ dev = [
     "taskipy==1.14.1",
 ]
 
+[tool.uv]
+package = true
+
 [tool.taskipy.tasks]
 format = "uv run ruff format . && uv run ruff check . --fix"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (use test database with small fixtures)",
+    "regression: marks tests as regression tests (use production database with full data)",
+]
+addopts = "-m 'not integration and not regression'"
+

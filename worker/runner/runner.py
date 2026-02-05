@@ -1,0 +1,88 @@
+"""Assessment execution
+
+This module provides a runner for pluggable assessments.
+"""
+
+import logging
+
+import geopandas as gpd
+import pandas as pd
+
+from worker.assessments.gcn import GcnAssessment
+from worker.assessments.nutrient import NutrientAssessment
+from worker.repositories.repository import Repository
+
+logger = logging.getLogger(__name__)
+
+
+ASSESSMENT_TYPES: dict[str, type] = {
+    "gcn": GcnAssessment,
+    "nutrient": NutrientAssessment,
+}
+
+
+def run_assessment(
+    assessment_type: str,
+    rlb_gdf: gpd.GeoDataFrame,
+    metadata: dict,
+    repository: Repository,
+) -> dict[str, pd.DataFrame | gpd.GeoDataFrame]:
+    """Run an impact assessment and return results as DataFrames.
+
+    This is the main entry point for executing assessments. It looks up the
+    assessment class, instantiates it, and executes it.
+
+    Args:
+        assessment_type: Assessment identifier (e.g., "gcn", "nutrient_mitigation")
+        rlb_gdf: Red Line Boundary GeoDataFrame (should be validated to BNG)
+        metadata: Assessment metadata (unique_ref, optional parameters, etc.)
+        repository: Data repository instance for loading reference data
+
+    TODO: docstring stale needs update
+    Returns:
+        Dictionary of DataFrames/GeoDataFrames from the assessment, e.g.:
+        {
+            "habitat_impact": GeoDataFrame(...),
+            "pond_frequency": DataFrame(...)
+        }
+
+    Raises:
+        KeyError: If assessment type is not registered
+        ValueError: If assessment.run() fails or returns invalid data
+    """
+    logger.info(f"Running assessment: {assessment_type}")
+
+    assessment_class = ASSESSMENT_TYPES.get(assessment_type)
+    if assessment_class is None:
+        raise KeyError(f"Assessment type {assessment_type} not supported")
+
+    logger.info(f"Instantiating {assessment_class.__name__}")
+    try:
+        assessment = assessment_class(rlb_gdf, metadata, repository)
+    except Exception as e:
+        logger.error(f"Assessment instantiation failed: {e}")
+        raise ValueError(f"Failed to instantiate assessment '{assessment_type}'") from e
+
+    logger.info(f"Executing {assessment_type}.run()")
+    try:
+        dataframes = assessment.run()
+    except Exception as e:
+        logger.error(f"Assessment execution failed: {e}")
+        raise ValueError(f"Assessment '{assessment_type}' execution failed") from e
+
+    if not isinstance(dataframes, dict):
+        raise ValueError(
+            f"Assessment '{assessment_type}'.run() must return a dict, "
+            f"got {type(dataframes).__name__}"
+        )
+
+    for key, value in dataframes.items():
+        if not isinstance(value, (pd.DataFrame, gpd.GeoDataFrame)):
+            raise ValueError(
+                f"Assessment '{assessment_type}'.run() returned invalid value for key '{key}': "
+                f"expected DataFrame or GeoDataFrame, got {type(value).__name__}"
+            )
+
+    logger.info(f"Assessment returned {len(dataframes)} result set(s): {list(dataframes.keys())}")
+
+    return dataframes
