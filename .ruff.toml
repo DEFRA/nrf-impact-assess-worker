@@ -1,8 +1,8 @@
 # Same as Black
 line-length = 100
 
-# Assume Python 3.12
-target-version = "py312"
+# Assume Python 3.13
+target-version = "py313"
 
 [lint]
 # Enable a comprehensive set of rules
@@ -60,13 +60,18 @@ ignore = [
     "E501",  # line too long, handled by formatter
     "B008",  # do not perform function calls in argument defaults
     "COM812", # missing trailing comma, conflicts with formatter
+    "G004",  # allow f-strings in logging for readability
+    "S608",  # SQL injection warning - false positive for controlled inputs
 ]
 
-# Ignore `E402` (import violations) in all `__init__.py` files
+# Per-file rule ignores
 [lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
 "app/**/test_*.py" = ["S101"]  # Allow assert in app test files
+"worker/config.py" = ["S108"]  # Allow /tmp for debug output
+"worker/main.py" = ["S104"]  # Allow 0.0.0.0 binding for container
+"worker/models/domain.py" = ["N815"]  # Scientific unit naming convention (_L_, _mg_L)
 
 # Enable auto-fixing
 fixable = ["ALL"]

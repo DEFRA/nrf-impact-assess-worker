@@ -104,7 +104,8 @@ class GcnAssessment:
             ponds = gpd.read_file(survey_ponds_path)
             ponds = ensure_crs(ponds)
             if "PANS" not in ponds.columns:
-                raise ValueError("Survey ponds must have 'PANS' column")
+                msg = "Survey ponds must have 'PANS' column"
+                raise ValueError(msg)
             if "TmpImp" not in ponds.columns:
                 logger.warning("Survey ponds missing 'TmpImp' column, defaulting to 'F'")
                 ponds["TmpImp"] = "F"
@@ -200,9 +201,8 @@ def _calculate_habitat_impact(
     habitat_impact = habitat_impact[habitat_impact["Shape_Area"] > 0].copy()
 
     # Select output columns (drop geometry for attribute-only table)
-    result = habitat_impact[["Area", "RZ", "Shape_Area"]].copy()
+    return habitat_impact[["Area", "RZ", "Shape_Area"]].copy()
 
-    return result
 
 
 def _calculate_pond_frequency(
@@ -267,10 +267,9 @@ def _calculate_pond_frequency(
 
     pond_zones["MaxZone"] = pond_zones["CONCATENATE_RZ"].apply(highest_zone)
 
-    frequency = (
+    return (
         pond_zones.groupby(["PANS", "Area", "MaxZone", "TmpImp"])
         .size()
         .reset_index(name="FREQUENCY")
     )
 
-    return frequency

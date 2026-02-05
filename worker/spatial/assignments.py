@@ -49,9 +49,11 @@ def _majority_overlap_sequential(
         ValueError: If required columns not found in GeoDataFrames
     """
     if input_id_col not in input_gdf.columns:
-        raise ValueError(f"input_id_col '{input_id_col}' not found in input GeoDataFrame")
+        msg = f"input_id_col '{input_id_col}' not found in input GeoDataFrame"
+        raise ValueError(msg)
     if overlay_attr_col not in overlay_gdf.columns:
-        raise ValueError(f"overlay_attr_col '{overlay_attr_col}' not found in overlay GeoDataFrame")
+        msg = f"overlay_attr_col '{overlay_attr_col}' not found in overlay GeoDataFrame"
+        raise ValueError(msg)
 
     # Drop 'id' column from overlay to avoid conflicts with input's 'id'
     # (the PostGIS tables have UUID 'id' primary keys)
@@ -83,9 +85,8 @@ def _majority_overlap_sequential(
     assignments = assignments.rename(columns={overlay_attr_col: output_field})
 
     # Merge back to input
-    result = input_gdf.merge(assignments[[input_id_col, output_field]], on=input_id_col, how="left")
+    return input_gdf.merge(assignments[[input_id_col, output_field]], on=input_id_col, how="left")
 
-    return result
 
 
 def _partition_by_bounds(gdf: gpd.GeoDataFrame, n_chunks: int) -> list[gpd.GeoDataFrame]:
@@ -193,13 +194,12 @@ def majority_overlap(
     combined = pd.concat(results, ignore_index=True)
 
     # Restore original geometry and order
-    result = input_gdf.merge(
+    return input_gdf.merge(
         combined[[input_id_col, output_field]],
         on=input_id_col,
         how="left"
     )
 
-    return result
 
 
 def any_intersection(
@@ -298,9 +298,8 @@ def nearest(
     )
 
     # Merge back to input
-    result = input_gdf.merge(assignments, on=input_id_col, how="left")
+    return input_gdf.merge(assignments, on=input_id_col, how="left")
 
-    return result
 
 
 def intersection(
@@ -327,9 +326,8 @@ def intersection(
     if input_gdf.crs != overlay_gdf.crs:
         overlay_gdf = overlay_gdf.to_crs(input_gdf.crs)
 
-    result = gpd.overlay(input_gdf, overlay_gdf, how="intersection", keep_geom_type=False)
+    return gpd.overlay(input_gdf, overlay_gdf, how="intersection", keep_geom_type=False)
 
-    return result
 
 
 def execute_assignment(
@@ -374,7 +372,10 @@ def execute_assignment(
         )
     if strategy == "intersection":
         return intersection(input_gdf, overlay_gdf, **kwargs)
-    raise ValueError(
+    msg = (
         f"Unknown assignment strategy: {strategy}. "
         f"Supported: majority_overlap, any_intersection, nearest, intersection"
+    )
+    raise ValueError(
+        msg
     )

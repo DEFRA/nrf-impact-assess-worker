@@ -154,9 +154,12 @@ class NutrientAssessment:
         expected_cols = RequiredColumns.all()
         missing_cols = [col for col in expected_cols if col not in rlb_gdf.columns]
         if missing_cols:
-            raise ValueError(
+            msg = (
                 f"Required columns missing from input: {missing_cols}. "
                 f"Expected columns: {expected_cols}"
+            )
+            raise ValueError(
+                msg
             )
 
         # Transform to BNG if needed (legacy lines 83-84)
@@ -598,11 +601,10 @@ class NutrientAssessment:
         ]
 
         # Remove Package Treatment Plant outside NN (legacy line 456)
-        rlb_gdf = rlb_gdf[
+        return rlb_gdf[
             ~(
                 (rlb_gdf["area_in_nn_catchment_ha"].isna())
                 & (rlb_gdf["wwtw_name"] == "Package Treatment Plant default")
             )
         ]
 
-        return rlb_gdf

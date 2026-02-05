@@ -54,33 +54,42 @@ def run_assessment(
 
     assessment_class = ASSESSMENT_TYPES.get(assessment_type)
     if assessment_class is None:
-        raise KeyError(f"Assessment type {assessment_type} not supported")
+        msg = f"Assessment type {assessment_type} not supported"
+        raise KeyError(msg)
 
     logger.info(f"Instantiating {assessment_class.__name__}")
     try:
         assessment = assessment_class(rlb_gdf, metadata, repository)
     except Exception as e:
         logger.error(f"Assessment instantiation failed: {e}")
-        raise ValueError(f"Failed to instantiate assessment '{assessment_type}'") from e
+        msg = f"Failed to instantiate assessment '{assessment_type}'"
+        raise ValueError(msg) from e
 
     logger.info(f"Executing {assessment_type}.run()")
     try:
         dataframes = assessment.run()
     except Exception as e:
         logger.error(f"Assessment execution failed: {e}")
-        raise ValueError(f"Assessment '{assessment_type}' execution failed") from e
+        msg = f"Assessment '{assessment_type}' execution failed"
+        raise ValueError(msg) from e
 
     if not isinstance(dataframes, dict):
-        raise ValueError(
+        msg = (
             f"Assessment '{assessment_type}'.run() must return a dict, "
             f"got {type(dataframes).__name__}"
         )
+        raise ValueError(
+            msg
+        )
 
     for key, value in dataframes.items():
-        if not isinstance(value, (pd.DataFrame, gpd.GeoDataFrame)):
-            raise ValueError(
+        if not isinstance(value, pd.DataFrame | gpd.GeoDataFrame):
+            msg = (
                 f"Assessment '{assessment_type}'.run() returned invalid value for key '{key}': "
                 f"expected DataFrame or GeoDataFrame, got {type(value).__name__}"
+            )
+            raise ValueError(
+                msg
             )
 
     logger.info(f"Assessment returned {len(dataframes)} result set(s): {list(dataframes.keys())}")

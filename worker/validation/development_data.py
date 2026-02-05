@@ -49,7 +49,7 @@ class EmbeddedDevelopmentDataValidator:
             return errors
 
         try:
-            numeric_vals = data["Dwellings"].apply(lambda x: isinstance(x, (int, float)))
+            numeric_vals = data["Dwellings"].apply(lambda x: isinstance(x, int | float))
             if not numeric_vals.all():
                 non_numeric_count = (~numeric_vals).sum()
                 errors.append(

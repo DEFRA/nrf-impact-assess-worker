@@ -51,9 +51,8 @@ def buffer_with_dissolve(
     # Apply precision snapping to match legacy ArcGIS behavior
     # This is critical for geometry consistency - buffer and unary_union operations
     # can introduce small coordinate variations that cascade through subsequent calculations
-    buffered = apply_precision(buffered, grid_size=grid_size)
+    return apply_precision(buffered, grid_size=grid_size)
 
-    return buffered
 
 
 def spatial_difference_with_precision(
@@ -85,6 +84,5 @@ def spatial_difference_with_precision(
     # Apply precision to result - overlay operations can introduce new vertices
     # and numerical imprecision, so we snap the output back to the grid to
     # maintain consistency with ArcGIS precision model behavior
-    result = apply_precision(result, grid_size=grid_size)
+    return apply_precision(result, grid_size=grid_size)
 
-    return result

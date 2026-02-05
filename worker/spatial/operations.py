@@ -37,9 +37,8 @@ def clip_gdf(
 
     # Use gpd.clip() to match baseline behavior
     # This is simpler than overlay and produces consistent results
-    clipped = gpd.clip(gdf, mask)
+    return gpd.clip(gdf, mask)
 
-    return clipped
 
 
 def spatial_join_intersect(
@@ -82,9 +81,8 @@ def spatial_join_intersect(
 
     # Apply precision to result - overlay operations can introduce new vertices
     # and numerical imprecision, so we snap the output back to the grid
-    result = apply_precision(result, grid_size=grid_size)
+    return apply_precision(result, grid_size=grid_size)
 
-    return result
 
 
 def make_valid_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

@@ -22,7 +22,10 @@ class EmailService:
         Raises:
             NotImplementedError: This service is not yet implemented (Phase 7 stub)
         """
-        raise NotImplementedError(
+        msg = (
             "EmailService.send_email() is not yet implemented. "
             "This stub will be replaced with GovUK Notify integration in a future phase."
+        )
+        raise NotImplementedError(
+            msg
         )

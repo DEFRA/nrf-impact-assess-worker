@@ -47,8 +47,9 @@ class S3Client:
         if s3_key_lower.endswith((".geojson", ".json")):
             path = self._download_geojson(s3_key, local_dir)
             return path, GeometryFormat.GEOJSON
+        msg = f"Unsupported file format: {s3_key}. Expected .zip (shapefile), .geojson, or .json"
         raise ValueError(
-            f"Unsupported file format: {s3_key}. Expected .zip (shapefile), .geojson, or .json"
+            msg
         )
 
     def _download_and_extract_shapefile_zip(self, s3_key: str, local_dir: Path) -> Path:
@@ -66,7 +67,8 @@ class S3Client:
 
         shp_files = list(local_dir.glob("*.shp"))
         if not shp_files:
-            raise ValueError(f"No .shp file found in {s3_key}")
+            msg = f"No .shp file found in {s3_key}"
+            raise ValueError(msg)
         if len(shp_files) > 1:
             logger.warning(f"Multiple .shp files found, using first: {shp_files[0]}")
 

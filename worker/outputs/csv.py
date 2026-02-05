@@ -45,7 +45,8 @@ class CSVOutputStrategy:
             ValueError: If results cannot be serialized
         """
         if not results:
-            raise ValueError("Cannot write CSV: results list is empty")
+            msg = "Cannot write CSV: results list is empty"
+            raise ValueError(msg)
 
         # Convert domain models to DataFrame rows
         rows = []

@@ -74,7 +74,8 @@ class JobOrchestrator:
                 )
 
                 if not geometry_path.exists():
-                    raise RuntimeError(f"S3Client returned non-existent path: {geometry_path}")
+                    msg = f"S3Client returned non-existent path: {geometry_path}"
+                    raise RuntimeError(msg)
 
                 # Process geometry file (steps 2-4)
                 assessment_results = self._process_geometry_file(

@@ -32,7 +32,10 @@ class FinancialCalculationService:
         Raises:
             NotImplementedError: This service is not yet implemented (Phase 7 stub)
         """
-        raise NotImplementedError(
+        msg = (
             "FinancialCalculationService.calculate() is not yet implemented. "
             "This stub will be replaced with actual financial calculations in a future phase."
+        )
+        raise NotImplementedError(
+            msg
         )

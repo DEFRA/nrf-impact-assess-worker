@@ -331,7 +331,8 @@ class AWSConfig(BaseSettings):
     @classmethod
     def must_not_be_empty(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("AWS resource identifiers cannot be empty")
+            msg = "AWS resource identifiers cannot be empty"
+            raise ValueError(msg)
         return v
 
 

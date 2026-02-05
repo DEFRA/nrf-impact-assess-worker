@@ -24,7 +24,8 @@ def ensure_crs(gdf: gpd.GeoDataFrame, target_crs: str = "EPSG:27700") -> gpd.Geo
         ValueError: If input GeoDataFrame has no CRS defined
     """
     if gdf.crs is None:
-        raise ValueError("Input GeoDataFrame has no CRS defined")
+        msg = "Input GeoDataFrame has no CRS defined"
+        raise ValueError(msg)
 
     if gdf.crs != target_crs:
         return gdf.to_crs(target_crs)
