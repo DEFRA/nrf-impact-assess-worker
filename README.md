@@ -1,8 +1,8 @@
-# cdp-python-backend-template
+# nrf-impact-assess-worker
 
 This is work-in-progress. See [To Do List](./TODO.md)
 
-- [cdp-python-backend-template](#cdp-python-backend-template)
+- [nrf-impact-assess-worker](#nrf-impact-assess-worker)
   - [Requirements](#requirements)
     - [Python](#python)
     - [Linting and Formatting](#linting-and-formatting)
