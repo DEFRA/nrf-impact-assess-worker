@@ -170,7 +170,7 @@ To run the application using the provided script, you can execute:
 This script will:
 
 - Check if Docker is running
-- Start dependent services with Docker Compose (Localstack, MongoDB)
+- Start dependent services with Docker Compose (Localstack)
 - Set up environment variables for local development
 - Load configuration from compose/aws.env and compose/secrets.env
 - Verify the Python virtual environment is set up
@@ -197,7 +197,6 @@ uv run pytest
 | `GET: /docs`         | Automatic API Swagger docs     |
 | `GET: /health`       | Health check endpoint          |
 | `GET: /example/test` | Simple example endpoint        |
-| `GET: /example/db`   | Database query example         |
 | `GET: /example/http` | HTTP client example            |
 
 ## Custom Cloudwatch Metrics

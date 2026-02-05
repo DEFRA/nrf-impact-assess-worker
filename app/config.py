@@ -8,9 +8,6 @@ class AppConfig(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8086
     log_config: str | None = None
-    mongo_uri: str | None = None
-    mongo_database: str = "nrf-impact-assess-worker"
-    mongo_truststore: str = "TRUSTSTORE_CDP_ROOT_CA"
     aws_endpoint_url: str | None = None
     http_proxy: HttpUrl | None = None
     enable_metrics: bool = False
