@@ -38,8 +38,6 @@ dev = [
     "moto[s3,sqs]>=5.0.0",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
-     "pre-commit==4.2.0",
-    "pytest==8.4.0",
     "pytest-asyncio==1.0.0",
     "pytest-cov==6.2.1",
     "pytest-mock>=3.15.1",
