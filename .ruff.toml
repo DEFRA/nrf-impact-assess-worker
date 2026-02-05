@@ -72,6 +72,8 @@ ignore = [
 "worker/config.py" = ["S108"]  # Allow /tmp for debug output
 "worker/main.py" = ["S104"]  # Allow 0.0.0.0 binding for container
 "worker/models/domain.py" = ["N815"]  # Scientific unit naming convention (_L_, _mg_L)
+"scripts/load_data.py" = ["C901"]  # Complex functions acceptable in data loading script
+"scripts/submit_job.py" = ["S106"]  # Hardcoded credentials intentional for LocalStack testing
 
 # Enable auto-fixing
 fixable = ["ALL"]

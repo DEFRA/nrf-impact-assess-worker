@@ -36,7 +36,7 @@ import json
 import logging
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -74,7 +74,8 @@ def zip_shapefile(shapefile_path: Path, output_path: Path) -> None:
                 logger.debug(f"  Added {component.name} to zip")
             elif ext in [".shp", ".shx", ".dbf"]:
                 # .shp, .shx, .dbf are required
-                raise FileNotFoundError(f"Required component {component} not found")
+                msg = f"Required component {component} not found"
+                raise FileNotFoundError(msg)
 
 
 @app.command()
@@ -168,7 +169,7 @@ def submit(
             s3_key = f"jobs/{job_id}/input.zip"
         except FileNotFoundError as e:
             logger.error(f"Failed to zip shapefile: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
     else:
         upload_file = geometry_file
         s3_key = f"jobs/{job_id}/input.geojson"
@@ -201,7 +202,7 @@ def submit(
             "job_id": job_id,
             "s3_input_key": s3_key,
             "developer_email": developer_email,
-            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "submitted_at": datetime.now(UTC).isoformat(),
             "development_name": development_name,
             "dwelling_type": dwelling_type,
             "number_of_dwellings": number_of_dwellings,
@@ -230,10 +231,10 @@ def submit(
 
     except ClientError as e:
         logger.error(f"AWS error: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     finally:
         # Cleanup temp zip file
         if zip_path is not None and zip_path.exists():

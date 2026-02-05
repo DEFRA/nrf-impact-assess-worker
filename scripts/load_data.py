@@ -65,22 +65,22 @@ def clean_nan_values(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         return {k: clean_nan_values(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    if isinstance(obj, list):
         return [clean_nan_values(item) for item in obj]
-    elif isinstance(obj, float):
+    if isinstance(obj, float):
         # Check for NaN or inf using numpy or math
         if np.isnan(obj) or np.isinf(obj):
             return None
         return obj
-    elif isinstance(obj, (np.floating, np.integer)):
+    if isinstance(obj, np.floating | np.integer):
         # Handle numpy scalar types
         if np.isnan(obj) or np.isinf(obj):
             return None
         return obj.item()  # Convert to Python native type
-    elif isinstance(obj, pd.Timestamp):
+    if isinstance(obj, pd.Timestamp):
         # Handle pandas Timestamp objects
         return obj.isoformat()
-    elif pd.isna(obj):
+    if pd.isna(obj):
         # Catch any remaining pandas NA types
         return None
     return obj
@@ -330,10 +330,7 @@ class SpatialDataLoader:
         print(f"Loading {layer_name} from {file_path.name}...")
 
         # Read spatial data
-        if layer:
-            gdf = gpd.read_file(file_path, layer=layer)
-        else:
-            gdf = gpd.read_file(file_path)
+        gdf = gpd.read_file(file_path, layer=layer) if layer else gpd.read_file(file_path)
 
         # Ensure CRS is EPSG:27700
         if gdf.crs is None:
@@ -663,7 +660,7 @@ def main(
 
     except Exception as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     finally:
         repository.close()
