@@ -75,7 +75,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             include_schemas=True,
-            include_object=lambda obj, name, type_, reflected, compare_to: (
+            include_object=lambda obj, _name, _type, _reflected, _compare_to: (
                 # Only include objects in nrf_reference schema
                 obj.schema == "nrf_reference" if hasattr(obj, "schema") else True
             ),
