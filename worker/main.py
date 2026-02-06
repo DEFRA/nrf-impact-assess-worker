@@ -21,7 +21,8 @@ import time
 from pathlib import Path
 
 import uvicorn
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from worker.aws.sqs import SQSClient
 from worker.config import AWSConfig, DatabaseSettings, HealthConfig, WorkerConfig
@@ -137,6 +138,27 @@ class SqsConsumer:
         self.running = False
 
 
+def check_database_connection(db_settings: DatabaseSettings) -> bool:
+    """Check if the database is accessible.
+
+    Attempts to connect and execute a simple query.
+    Returns True if successful, False otherwise.
+    Logs warnings on failure but does not raise exceptions.
+    """
+    try:
+        engine = create_engine(str(db_settings.url), pool_pre_ping=True)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connection check: OK")
+        return True
+    except SQLAlchemyError as e:
+        logger.warning(f"Database connection check failed: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Database connection check failed with unexpected error: {e}")
+        return False
+
+
 def main():
     """Main entry point for the SQS consumer worker."""
     health_process = None
@@ -146,6 +168,9 @@ def main():
         worker_config = WorkerConfig()
         health_config = HealthConfig()
         db_settings = DatabaseSettings()
+
+        # Check database connectivity early
+        check_database_connection(db_settings)
 
         logger.info("Initializing worker components...")
 
