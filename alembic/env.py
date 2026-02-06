@@ -15,8 +15,9 @@ from worker.models.db import Base
 config = context.config
 
 # Load database URL from DatabaseSettings (supports environment variables)
+# Note: Alembic migrations run with local auth only (no IAM tokens needed)
 db_settings = DatabaseSettings()
-config.set_main_option("sqlalchemy.url", str(db_settings.url))
+config.set_main_option("sqlalchemy.url", db_settings.connection_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
