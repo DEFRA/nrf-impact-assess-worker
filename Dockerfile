@@ -51,5 +51,5 @@ ENV IAT_DATA_BASE_PATH=/data
 ENV PATH="/app/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
-# Run worker
-CMD ["python", "-m", "worker.main"]
+# Run worker (base image has ENTRYPOINT ["python"])
+CMD ["-m", "worker.main"]
