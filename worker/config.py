@@ -295,7 +295,7 @@ class DatabaseSettings(BaseSettings):
     - DB_PORT: Database port (default: 5432)
     - DB_DATABASE: Database name (default: nrf_impact)
     - DB_USER: Database user (default: postgres)
-    - DB_IAM_AUTHENTICATION: Enable IAM auth (default: false)
+    - DB_IAM_AUTHENTICATION: Enable IAM auth (default: true)
     - DB_LOCAL_PASSWORD: Static password for local dev (default: empty)
 
     When DB_IAM_AUTHENTICATION=true:
@@ -320,8 +320,8 @@ class DatabaseSettings(BaseSettings):
 
     # Authentication mode
     iam_authentication: bool = Field(
-        default=False,
-        description="Use IAM authentication for RDS (requires AWS credentials)",
+        default=True,
+        description="Use IAM authentication for RDS (set to false for local dev)",
     )
     local_password: str = Field(
         default="",
