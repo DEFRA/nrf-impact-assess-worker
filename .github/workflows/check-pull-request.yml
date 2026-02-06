@@ -39,8 +39,20 @@ jobs:
       - name: Test Docker Image Build
         run: |
           set +e
-          docker build --no-cache --tag nrf-impact-assessment-worker .
+          docker build --no-cache --tag nrf-impact-assess-worker .
           exit $?
+
+      - name: Start compose stack
+        run: |
+          mkdir -p iat_input  # Create empty data dir for volume mount
+          docker compose up --build --wait --wait-timeout 120
+
+      - name: Verify worker health
+        run: curl -sf http://localhost:8085/health | grep -q '"status":"ok"'
+
+      - name: Teardown compose stack
+        if: always()
+        run: docker compose down --volumes
 
 #      - name: SonarCloud Scan
 #        if: github.actor != 'dependabot[bot]'
