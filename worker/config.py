@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -286,12 +286,22 @@ DEFAULT_GCN_CONFIG = GcnConfig()
 class DatabaseSettings(BaseSettings):
     """Database connection configuration for PostGIS.
 
-    Can be overridden via environment variable:
-    - DB_URL (default: postgresql://localhost:5432/nrf_impact)
+    Supports two modes:
+    1. Local development: Uses static password from DB_LOCAL_PASSWORD
+    2. CDP Cloud (IAM): Uses IAM authentication with short-lived RDS tokens
 
-    Note:
-        Operational settings (pool size, timeouts, etc.) should be handled
-        by infrastructure/deployment configuration, not application config.
+    Environment variables:
+    - DB_HOST: Database host (default: localhost)
+    - DB_PORT: Database port (default: 5432)
+    - DB_DATABASE: Database name (default: nrf_impact)
+    - DB_USER: Database user (default: postgres)
+    - DB_IAM_AUTHENTICATION: Enable IAM auth (default: false)
+    - DB_LOCAL_PASSWORD: Static password for local dev (default: empty)
+
+    When DB_IAM_AUTHENTICATION=true:
+    - Requests short-lived tokens from AWS RDS
+    - Enables SSL/TLS with sslmode=require
+    - Connection pool recycling is set to 10 min (tokens expire at 15 min)
     """
 
     model_config = SettingsConfigDict(
@@ -302,10 +312,30 @@ class DatabaseSettings(BaseSettings):
         extra="ignore",
     )
 
-    url: PostgresDsn = Field(
-        default="postgresql://postgres@localhost:5432/nrf_impact",
-        description="PostgreSQL connection URL",
+    # Connection parameters
+    host: str = Field(default="localhost", description="Database host")
+    port: int = Field(default=5432, description="Database port")
+    database: str = Field(default="nrf_impact", description="Database name")
+    user: str = Field(default="postgres", description="Database user")
+
+    # Authentication mode
+    iam_authentication: bool = Field(
+        default=False,
+        description="Use IAM authentication for RDS (requires AWS credentials)",
     )
+    local_password: str = Field(
+        default="",
+        description="Static password for local development",
+    )
+
+    @property
+    def connection_url(self) -> str:
+        """Build connection URL from individual parameters.
+
+        Password is not included - it's injected by the engine factory
+        (either static password or IAM token).
+        """
+        return f"postgresql://{self.user}@{self.host}:{self.port}/{self.database}"
 
 
 class AWSConfig(BaseSettings):

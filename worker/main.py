@@ -21,13 +21,14 @@ import time
 from pathlib import Path
 
 import uvicorn
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from worker.aws.sqs import SQSClient
 from worker.config import AWSConfig, DatabaseSettings, HealthConfig, WorkerConfig
 from worker.health import app as health_app
 from worker.orchestrator import JobOrchestrator
+from worker.repositories.engine import create_db_engine
 from worker.repositories.repository import Repository
 from worker.services.email import EmailService
 from worker.services.financial import FinancialCalculationService
@@ -138,17 +139,24 @@ class SqsConsumer:
         self.running = False
 
 
-def check_database_connection(db_settings: DatabaseSettings) -> bool:
+def check_database_connection(
+    db_settings: DatabaseSettings, aws_config: AWSConfig | None = None
+) -> bool:
     """Check if the database is accessible.
 
     Attempts to connect and execute a simple query.
     Returns True if successful, False otherwise.
     Logs warnings on failure but does not raise exceptions.
+
+    Args:
+        db_settings: Database connection settings.
+        aws_config: AWS configuration (needed for IAM auth region).
     """
     try:
-        engine = create_engine(str(db_settings.url), pool_pre_ping=True)
+        engine = create_db_engine(db_settings, aws_config, use_null_pool=True)
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
+        engine.dispose()
         logger.info("Database connection check: OK")
         return True
     except SQLAlchemyError as e:
@@ -170,7 +178,7 @@ def main():
         db_settings = DatabaseSettings()
 
         # Check database connectivity early
-        check_database_connection(db_settings)
+        check_database_connection(db_settings, aws_config)
 
         logger.info("Initializing worker components...")
 
@@ -184,7 +192,8 @@ def main():
         logger.info(f"Health server started on port {health_config.port}")
 
         # Initialize PostGIS repository (ONCE - reused across jobs)
-        engine = create_engine(str(db_settings.url), pool_pre_ping=True)
+        # Uses IAM authentication in CDP cloud, static password locally
+        engine = create_db_engine(db_settings, aws_config)
         repository = Repository(engine)
 
         financial_service = FinancialCalculationService()
