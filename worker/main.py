@@ -11,11 +11,14 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
+import json
 import logging
+import logging.config
 import multiprocessing
 import signal
 import sys
 import time
+from pathlib import Path
 
 import uvicorn
 from sqlalchemy import create_engine
@@ -28,15 +31,46 @@ from worker.repositories.repository import Repository
 from worker.services.email import EmailService
 from worker.services.financial import FinancialCalculationService
 
-# Configure logging for CloudWatch
-logging.basicConfig(
-    level=logging.INFO,
-    format=(
-        '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
-        '"logger": "%(name)s", "message": "%(message)s"}'
-    ),
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
+
+def is_running_in_ecs() -> bool:
+    """Detect if running in AWS ECS (CDP environment).
+
+    ECS automatically injects metadata URI environment variables into containers.
+    These are always present in ECS and never present locally.
+    """
+    return bool(
+        os.environ.get("ECS_CONTAINER_METADATA_URI_V4")
+        or os.environ.get("ECS_CONTAINER_METADATA_URI")
+    )
+
+
+def configure_logging() -> None:
+    """Configure logging based on environment.
+
+    In ECS/CDP: Uses logging.json with ECS-compatible structured logging,
+    trace ID injection, and health check filtering.
+
+    Locally: Uses logging-dev.json with simple text format for readability.
+    """
+    config_file = "logging.json" if is_running_in_ecs() else "logging-dev.json"
+    config_path = Path(__file__).parent.parent / config_file
+
+    if config_path.exists():
+        with open(config_path) as f:
+            logging.config.dictConfig(json.load(f))
+    else:
+        # Fallback to basic config if file not found
+        logging.basicConfig(
+            level=logging.INFO,
+            format=(
+                '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
+                '"logger": "%(name)s", "message": "%(message)s"}'
+            ),
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 

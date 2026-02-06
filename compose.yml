@@ -61,6 +61,7 @@ services:
           memory: 1g
     volumes:
       - ./iat_input:/data:ro
+      - ./logging-dev.json:/app/logging-dev.json:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8085/health | grep -q '\"status\":\"ok\"'"]
       interval: 10s

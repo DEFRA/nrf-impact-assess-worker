@@ -39,6 +39,9 @@ COPY --from=builder /app/.venv .venv/
 # Copy application code
 COPY worker/ ./worker/
 
+# Copy logging configuration for ECS/CDP
+COPY logging.json ./
+
 # Reference data stored on EFS (mounted at runtime by ECS)
 # EFS will be mounted at /data by ECS task definition
 # NOTE: EFS permissions must allow read access for the container user

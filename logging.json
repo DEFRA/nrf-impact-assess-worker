@@ -3,10 +3,10 @@
   "disable_existing_loggers": false,
   "filters": {
       "cdp_filter": {
-          "()": "app.common.log_utils.ExtraFieldsFilter"
+          "()": "worker.common.log_utils.ExtraFieldsFilter"
       },
       "healthcheck_filter": {
-          "()": "app.common.log_utils.EndpointFilter",
+          "()": "worker.common.log_utils.EndpointFilter",
           "path": "/health"
       }
   },
