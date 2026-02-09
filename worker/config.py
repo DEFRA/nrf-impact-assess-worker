@@ -298,7 +298,7 @@ class DatabaseSettings(BaseSettings):
     - DB_IAM_AUTHENTICATION: Enable IAM auth (default: true)
     - DB_LOCAL_PASSWORD: Static password for local dev (default: empty)
     - DB_SSL_MODE: SSL mode - require, verify-ca, verify-full (default: require)
-    - DB_RDS_TRUSTSTORE: Name of TRUSTSTORE_* env var for RDS cert (default: RDS)
+    - DB_RDS_TRUSTSTORE: Name of TRUSTSTORE_* env var for RDS cert (default: RDS_ROOT_CA)
 
     When DB_IAM_AUTHENTICATION=true:
     - Requests short-lived tokens from AWS RDS
@@ -337,8 +337,8 @@ class DatabaseSettings(BaseSettings):
         description="SSL mode for database connections (require, verify-ca, verify-full)",
     )
     rds_truststore: str = Field(
-        default="RDS",
-        description="Name of TRUSTSTORE_* env var containing RDS CA cert (e.g., 'RDS' for TRUSTSTORE_RDS)",
+        default="RDS_ROOT_CA",
+        description="Name of TRUSTSTORE_* env var containing RDS CA cert (default: TRUSTSTORE_RDS_ROOT_CA)",
     )
 
     @property
