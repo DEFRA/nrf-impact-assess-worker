@@ -50,7 +50,7 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
             Region=region,
         )
         # Token is a long string - just log that we got one, not the value
-        logger.debug("Successfully generated IAM auth token (length=%d)", len(token))
+        logger.info("Successfully generated IAM auth token (length=%d chars)", len(token))
         return token
     except Exception:
         logger.exception(
@@ -141,8 +141,9 @@ def create_db_engine(
 
     # Create engine based on pooling strategy
     if use_null_pool:
-        # NullPool: No connection pooling, useful for testing
+        # NullPool: No connection pooling, useful for testing/connection checks
         # Get password once since connections aren't pooled
+        logger.info("Generating authentication token for connection check")
         password = _get_password(settings, region)
         url_with_password = base_url.replace(
             f"{settings.user}@",
@@ -154,6 +155,7 @@ def create_db_engine(
             echo=echo,
             connect_args=connect_args if connect_args else {},
         )
+        logger.info("Created engine with NullPool for connection check")
     else:
         # QueuePool: Standard connection pooling for production
         # For IAM auth, we need fresh tokens for each connection
