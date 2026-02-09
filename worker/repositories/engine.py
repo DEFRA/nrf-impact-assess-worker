@@ -148,12 +148,30 @@ def create_db_engine(
 
     if settings.iam_authentication:
         # Configure SSL for RDS IAM authentication
-        # Uses sslmode=require which encrypts the connection but doesn't verify
-        # the certificate against a CA bundle (matches CDP Node.js pattern with
-        # rejectUnauthorized: false). CDP provides certs via cdp-app-config but
-        # the secureContext pattern doesn't directly apply to Python/psycopg2.
-        connect_args["sslmode"] = "require"
-        logger.info("SSL enabled with sslmode=require for IAM authentication (region=%s)", region)
+        connect_args["sslmode"] = settings.ssl_mode
+
+        if settings.ssl_cert:
+            # Use custom CA certificate from CDP truststore
+            if os.path.exists(settings.ssl_cert):
+                connect_args["sslrootcert"] = settings.ssl_cert
+                logger.info(
+                    "SSL enabled: sslmode=%s, sslrootcert=%s (region=%s)",
+                    settings.ssl_mode,
+                    settings.ssl_cert,
+                    region,
+                )
+            else:
+                logger.warning(
+                    "SSL cert path configured but file not found: %s (using sslmode=%s without cert)",
+                    settings.ssl_cert,
+                    settings.ssl_mode,
+                )
+        else:
+            logger.info(
+                "SSL enabled: sslmode=%s, no custom CA cert configured (region=%s)",
+                settings.ssl_mode,
+                region,
+            )
 
     # Create engine based on pooling strategy
     if use_null_pool:
