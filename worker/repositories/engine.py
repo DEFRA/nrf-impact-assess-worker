@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool, QueuePool
 
+from worker.common import tls
 from worker.config import AWSConfig, DatabaseSettings
 
 logger = logging.getLogger(__name__)
@@ -148,12 +149,26 @@ def create_db_engine(
 
     if settings.iam_authentication:
         # Configure SSL for RDS IAM authentication
-        # Uses sslmode=require which encrypts the connection but doesn't verify
-        # the certificate against a CA bundle (matches CDP Node.js pattern with
-        # rejectUnauthorized: false). CDP provides certs via cdp-app-config but
-        # the secureContext pattern doesn't directly apply to Python/psycopg2.
-        connect_args["sslmode"] = "require"
-        logger.info("SSL enabled with sslmode=require for IAM authentication (region=%s)", region)
+        connect_args["sslmode"] = settings.ssl_mode
+
+        # Try to get CA certificate from CDP truststore (TRUSTSTORE_* env vars)
+        cert_path = tls.get_cert_path(settings.rds_truststore)
+        if cert_path:
+            connect_args["sslrootcert"] = cert_path
+            logger.info(
+                "SSL enabled: sslmode=%s, sslrootcert=%s (from TRUSTSTORE_%s, region=%s)",
+                settings.ssl_mode,
+                cert_path,
+                settings.rds_truststore,
+                region,
+            )
+        else:
+            logger.info(
+                "SSL enabled: sslmode=%s, no TRUSTSTORE_%s cert found (region=%s)",
+                settings.ssl_mode,
+                settings.rds_truststore,
+                region,
+            )
 
     # Create engine based on pooling strategy
     if use_null_pool:

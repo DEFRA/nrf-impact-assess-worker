@@ -297,10 +297,13 @@ class DatabaseSettings(BaseSettings):
     - DB_USER: Database user (default: postgres)
     - DB_IAM_AUTHENTICATION: Enable IAM auth (default: true)
     - DB_LOCAL_PASSWORD: Static password for local dev (default: empty)
+    - DB_SSL_MODE: SSL mode - require, verify-ca, verify-full (default: require)
+    - DB_RDS_TRUSTSTORE: Name of TRUSTSTORE_* env var for RDS cert (default: RDS)
 
     When DB_IAM_AUTHENTICATION=true:
     - Requests short-lived tokens from AWS RDS
-    - Enables SSL/TLS with sslmode=require
+    - Enables SSL/TLS with configured ssl_mode
+    - Uses CA cert from TRUSTSTORE_* env var if available
     - Connection pool recycling is set to 10 min (tokens expire at 15 min)
     """
 
@@ -326,6 +329,16 @@ class DatabaseSettings(BaseSettings):
     local_password: str = Field(
         default="",
         description="Static password for local development",
+    )
+
+    # SSL/TLS configuration
+    ssl_mode: str = Field(
+        default="require",
+        description="SSL mode for database connections (require, verify-ca, verify-full)",
+    )
+    rds_truststore: str = Field(
+        default="RDS",
+        description="Name of TRUSTSTORE_* env var containing RDS CA cert (e.g., 'RDS' for TRUSTSTORE_RDS)",
     )
 
     @property
