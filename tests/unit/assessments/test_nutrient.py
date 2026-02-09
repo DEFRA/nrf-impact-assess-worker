@@ -241,6 +241,26 @@ def mock_repository(
 
     repo.majority_overlap_postgis.side_effect = majority_overlap_postgis_side_effect
 
+    def batch_majority_overlap_postgis_side_effect(
+        input_gdf, input_id_col, assignments,
+    ):
+        """Simulate batched PostGIS majority_overlap using Python-side overlay."""
+        results = {}
+        for assignment in assignments:
+            result = majority_overlap_postgis_side_effect(
+                input_gdf=input_gdf,
+                overlay_table=assignment["overlay_table"],
+                overlay_filter=assignment["overlay_filter"],
+                input_id_col=input_id_col,
+                overlay_attr_col=assignment["overlay_attr_col"],
+                output_field=assignment["output_field"],
+                default_value=assignment.get("default_value"),
+            )
+            results[assignment["output_field"]] = result
+        return results
+
+    repo.batch_majority_overlap_postgis.side_effect = batch_majority_overlap_postgis_side_effect
+
     def land_use_intersection_postgis_side_effect(
         input_gdf, coeff_version, nn_version,
     ):
@@ -312,9 +332,9 @@ def test_run_assessment_basic(sample_rlb, mock_repository):
     assert "dev_area_ha" in result_df.columns
 
     # Verify repository was called (execute_query for version lookups + lookups,
-    # majority_overlap_postgis for spatial, land_use_intersection_postgis for land use)
+    # batch_majority_overlap_postgis for spatial, land_use_intersection_postgis for land use)
     assert mock_repository.execute_query.call_count >= 4
-    assert mock_repository.majority_overlap_postgis.call_count == 3
+    assert mock_repository.batch_majority_overlap_postgis.call_count == 1
     assert mock_repository.land_use_intersection_postgis.call_count == 1
 
 

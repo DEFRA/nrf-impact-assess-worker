@@ -369,6 +369,9 @@ class AWSConfig(BaseSettings):
     # SQS Configuration
     sqs_queue_url: str
 
+    # Optional endpoint URL for LocalStack (local development)
+    endpoint_url: str | None = Field(default=None, description="Override AWS endpoint for LocalStack")
+
     # Model config for validation
     @field_validator("s3_input_bucket", "sqs_queue_url")
     @classmethod

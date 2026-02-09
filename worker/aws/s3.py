@@ -15,10 +15,13 @@ logger = logging.getLogger(__name__)
 class S3Client:
     """Handles S3 operations for geometry file input (shapefile or GeoJSON)."""
 
-    def __init__(self, bucket_name: str, region: str):
+    def __init__(self, bucket_name: str, region: str, endpoint_url: str | None = None):
         self.bucket_name = bucket_name
         self.region = region
-        self.s3 = boto3.client("s3", region_name=region)
+        client_kwargs: dict = {"region_name": region}
+        if endpoint_url:
+            client_kwargs["endpoint_url"] = endpoint_url
+        self.s3 = boto3.client("s3", **client_kwargs)
 
     def download_geometry_file(self, s3_key: str, local_dir: Path) -> tuple[Path, GeometryFormat]:
         """Download geometry file from S3 (shapefile zip or GeoJSON).

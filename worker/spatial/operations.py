@@ -7,7 +7,7 @@ This module provides common spatial operations used across assessments:
 """
 
 import geopandas as gpd
-from shapely.validation import make_valid
+from shapely import make_valid
 
 from worker.spatial.utils import apply_precision
 
@@ -102,6 +102,5 @@ def make_valid_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         rlb = make_valid_geometries(rlb_gdf)
     """
     gdf = gdf.copy()
-    gdf["geometry"] = gdf.geometry.apply(lambda geom: make_valid(geom) if geom else geom)
-
+    gdf["geometry"] = make_valid(gdf.geometry.values)
     return gdf

@@ -377,14 +377,11 @@ class SpatialDataLoader:
         # This preserves all source attributes for flexible querying
         attribute_columns = [col for col in gdf.columns if col != "geometry"]
         if attribute_columns:
-            # Convert each row's attributes to a JSON string
-            # Use clean_nan_values to handle NaN/inf and type conversion
-            attributes_list = []
-            for _, row in gdf[attribute_columns].iterrows():
-                row_dict = clean_nan_values(row.to_dict())
-                # Convert to JSON string for JSONB compatibility
-                attributes_list.append(json.dumps(row_dict))
-            clean_gdf["attributes"] = attributes_list
+            # Use to_dict('records') instead of iterrows() for faster extraction
+            records = gdf[attribute_columns].to_dict("records")
+            clean_gdf["attributes"] = [
+                json.dumps(clean_nan_values(rec)) for rec in records
+            ]
         else:
             clean_gdf["attributes"] = None
 

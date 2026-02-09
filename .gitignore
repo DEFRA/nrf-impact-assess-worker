@@ -199,4 +199,4 @@ compose/secrets.env
 
 coverage*
 
-/.claude
+.claude

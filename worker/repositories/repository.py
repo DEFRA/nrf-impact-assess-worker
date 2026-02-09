@@ -135,8 +135,10 @@ class Repository:
 
             # 2. Bulk-insert all input geometries in one statement
             insert_values = [
-                {"input_id": int(row[input_id_col]), "geom_wkt": row.geometry.wkt}
-                for _, row in input_gdf.iterrows()
+                {"input_id": int(input_id), "geom_wkt": wkt}
+                for input_id, wkt in zip(
+                    input_gdf[input_id_col], input_gdf.geometry.to_wkt(), strict=False
+                )
             ]
             session.execute(
                 text(
@@ -194,6 +196,121 @@ class Repository:
 
         return df
 
+    def batch_majority_overlap_postgis(
+        self,
+        input_gdf: gpd.GeoDataFrame,
+        input_id_col: str,
+        assignments: list[dict[str, Any]],
+    ) -> dict[str, pd.DataFrame]:
+        """Perform multiple majority overlap assignments in a single DB session.
+
+        Creates the temporary table and spatial index once, then runs each
+        LATERAL join query against it. Saves 2 temp-table creation/index cycles
+        compared to calling majority_overlap_postgis() 3 times.
+
+        Args:
+            input_gdf: Input features with geometry
+            input_id_col: ID column in input_gdf
+            assignments: List of dicts, each with keys:
+                - overlay_table: SQLAlchemy model class
+                - overlay_filter: SQLAlchemy WHERE clause
+                - overlay_attr_col: Column name (str) or SQLAlchemy expression
+                - output_field: Name for output column
+                - default_value: Value when no intersection found (optional)
+
+        Returns:
+            Dict mapping output_field → DataFrame with input_id_col and output_field
+        """
+        if len(input_gdf) == 0:
+            return {
+                a["output_field"]: pd.DataFrame(columns=[input_id_col, a["output_field"]])
+                for a in assignments
+            }
+
+        results = {}
+
+        with self.session() as session:
+            # 1. Create temp table ONCE
+            session.execute(text(
+                "CREATE TEMPORARY TABLE _tmp_input_geom ("
+                "  input_id integer, "
+                "  geom geometry(Geometry, 27700)"
+                ") ON COMMIT DROP"
+            ))
+
+            # 2. Bulk-insert ONCE
+            insert_values = [
+                {"input_id": int(input_id), "geom_wkt": wkt}
+                for input_id, wkt in zip(
+                    input_gdf[input_id_col], input_gdf.geometry.to_wkt(), strict=False
+                )
+            ]
+            session.execute(
+                text(
+                    "INSERT INTO _tmp_input_geom (input_id, geom) "
+                    "VALUES (:input_id, ST_SetSRID(ST_GeomFromText(:geom_wkt), 27700))"
+                ),
+                insert_values,
+            )
+
+            # 3. Build spatial index ONCE
+            session.execute(text(
+                "CREATE INDEX ON _tmp_input_geom USING GIST (geom)"
+            ))
+
+            # 4. Run each LATERAL query against the shared temp table
+            for assignment in assignments:
+                overlay_table = assignment["overlay_table"]
+                overlay_filter = assignment["overlay_filter"]
+                overlay_attr_col = assignment["overlay_attr_col"]
+                output_field = assignment["output_field"]
+                default_value = assignment.get("default_value")
+
+                if isinstance(overlay_attr_col, str):
+                    overlay_attr = getattr(overlay_table, overlay_attr_col)
+                else:
+                    overlay_attr = overlay_attr_col
+
+                table = overlay_table.__table__
+                schema = table.schema
+                table_name = table.name
+                qualified = f"{schema}.{table_name}" if schema else table_name
+
+                filter_str = str(overlay_filter.compile(
+                    dialect=session.bind.dialect,
+                    compile_kwargs={"literal_binds": True},
+                ))
+                attr_str = str(overlay_attr.compile(
+                    dialect=session.bind.dialect,
+                    compile_kwargs={"literal_binds": True},
+                ))
+
+                filter_sql = filter_str.replace(f"{qualified}.", "t.")
+                attr_sql = attr_str.replace(f"{qualified}.", "t.")
+
+                raw_sql = text(f"""
+                    SELECT i.input_id, best.attr_val
+                    FROM _tmp_input_geom i
+                    LEFT JOIN LATERAL (
+                        SELECT {attr_sql} AS attr_val
+                        FROM {qualified} t
+                        WHERE {filter_sql}
+                          AND ST_Intersects(t.geometry, i.geom)
+                        ORDER BY ST_Area(ST_Intersection(t.geometry, i.geom)) DESC
+                        LIMIT 1
+                    ) best ON true
+                """)
+
+                rows = session.execute(raw_sql).fetchall()
+                df = pd.DataFrame(rows, columns=[input_id_col, output_field])
+
+                if default_value is not None:
+                    df[output_field] = df[output_field].fillna(default_value)
+
+                results[output_field] = df
+
+        return results
+
     def land_use_intersection_postgis(
         self,
         input_gdf: gpd.GeoDataFrame,
@@ -240,16 +357,18 @@ class Repository:
             ))
 
             # 2. Bulk-insert RLB geometries
+            wkt_values = input_gdf.geometry.to_wkt().tolist()
+            records = input_gdf[["rlb_id", "dwellings", "name", "dwelling_category", "source"]].to_dict("records")
             insert_values = [
                 {
-                    "rlb_id": int(row["rlb_id"]),
-                    "dwellings": int(row["dwellings"]),
-                    "name": str(row["name"]),
-                    "dwelling_category": str(row["dwelling_category"]),
-                    "source": str(row["source"]),
-                    "geom_wkt": row.geometry.wkt,
+                    "rlb_id": int(rec["rlb_id"]),
+                    "dwellings": int(rec["dwellings"]),
+                    "name": str(rec["name"]),
+                    "dwelling_category": str(rec["dwelling_category"]),
+                    "source": str(rec["source"]),
+                    "geom_wkt": wkt_values[i],
                 }
-                for _, row in input_gdf.iterrows()
+                for i, rec in enumerate(records)
             ]
             session.execute(
                 text(
@@ -266,27 +385,32 @@ class Repository:
                 "CREATE INDEX ON _tmp_rlb USING GIST (geom)"
             ))
 
-            # 4. 3-way intersection query
+            # 4. 3-way intersection query — use subquery to compute
+            #    ST_Intersection once, then filter and calculate area from it
             raw_sql = text("""
-                SELECT
-                    r.rlb_id, r.dwellings, r.name, r.dwelling_category, r.source,
-                    c.crome_id, c.lu_curr_n_coeff, c.lu_curr_p_coeff,
-                    c.n_resi_coeff, c.p_resi_coeff,
-                    nn.attributes->>'N2K_Site_N' AS n2k_site_n,
-                    ST_Area(ST_Intersection(ST_Intersection(r.geom, c.geometry), nn.geometry))
-                        / 10000.0 AS area_in_nn_catchment_ha
-                FROM _tmp_rlb r
-                JOIN nrf_reference.coefficient_layer c
-                    ON c.version = :coeff_version
-                    AND ST_Intersects(r.geom, c.geometry)
-                JOIN nrf_reference.spatial_layer nn
-                    ON nn.layer_type = CAST(:nn_layer_type AS nrf_reference.spatial_layer_type)
-                    AND nn.version = :nn_version
-                    AND ST_Intersects(r.geom, nn.geometry)
-                    AND ST_Intersects(c.geometry, nn.geometry)
-                WHERE ST_Area(
-                    ST_Intersection(ST_Intersection(r.geom, c.geometry), nn.geometry)
-                ) > 0
+                SELECT rlb_id, dwellings, name, dwelling_category, source,
+                       crome_id, lu_curr_n_coeff, lu_curr_p_coeff,
+                       n_resi_coeff, p_resi_coeff, n2k_site_n,
+                       ST_Area(isect_geom) / 10000.0 AS area_in_nn_catchment_ha
+                FROM (
+                    SELECT
+                        r.rlb_id, r.dwellings, r.name, r.dwelling_category, r.source,
+                        c.crome_id, c.lu_curr_n_coeff, c.lu_curr_p_coeff,
+                        c.n_resi_coeff, c.p_resi_coeff,
+                        nn.attributes->>'N2K_Site_N' AS n2k_site_n,
+                        ST_Intersection(ST_Intersection(r.geom, c.geometry), nn.geometry)
+                            AS isect_geom
+                    FROM _tmp_rlb r
+                    JOIN nrf_reference.coefficient_layer c
+                        ON c.version = :coeff_version
+                        AND ST_Intersects(r.geom, c.geometry)
+                    JOIN nrf_reference.spatial_layer nn
+                        ON nn.layer_type = CAST(:nn_layer_type AS nrf_reference.spatial_layer_type)
+                        AND nn.version = :nn_version
+                        AND ST_Intersects(r.geom, nn.geometry)
+                        AND ST_Intersects(c.geometry, nn.geometry)
+                ) sub
+                WHERE ST_Area(isect_geom) > 0
             """)
 
             rows = session.execute(
