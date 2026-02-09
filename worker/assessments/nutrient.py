@@ -56,6 +56,7 @@ class NutrientAssessment:
         self.repository = repository
         self.config = AssessmentConfig()
         self._debug_config = DebugConfig.from_env()
+        self._version_cache: dict[str, int] = {}
 
     def run(self) -> dict[str, pd.DataFrame]:
         """Run nutrient impact assessment.
@@ -178,28 +179,33 @@ class NutrientAssessment:
         return rlb_gdf
 
     def _resolve_latest_version(self, layer_type: SpatialLayerType) -> int:
-        """Fetch the latest version number for a spatial layer type."""
-        stmt = select(func.max(SpatialLayer.version)).where(
-            SpatialLayer.layer_type == layer_type
-        )
-        result = self.repository.execute_query(stmt, as_gdf=False)
-        return result[0] if result else 1
+        """Fetch the latest version number for a spatial layer type (cached)."""
+        cache_key = f"spatial_{layer_type.name}"
+        if cache_key not in self._version_cache:
+            stmt = select(func.max(SpatialLayer.version)).where(
+                SpatialLayer.layer_type == layer_type
+            )
+            result = self.repository.execute_query(stmt, as_gdf=False)
+            self._version_cache[cache_key] = result[0] if result else 1
+        return self._version_cache[cache_key]
 
     def _resolve_latest_coeff_version(self) -> int:
-        """Fetch the latest version number for the coefficient layer."""
-        stmt = select(func.max(CoefficientLayer.version))
-        result = self.repository.execute_query(stmt, as_gdf=False)
-        return result[0] if result else 1
+        """Fetch the latest version number for the coefficient layer (cached)."""
+        cache_key = "coefficient"
+        if cache_key not in self._version_cache:
+            stmt = select(func.max(CoefficientLayer.version))
+            result = self.repository.execute_query(stmt, as_gdf=False)
+            self._version_cache[cache_key] = result[0] if result else 1
+        return self._version_cache[cache_key]
 
     def _assign_spatial_features(self, rlb_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-        """Assign spatial features via majority overlap.
+        """Assign spatial features via batched majority overlap.
 
         Legacy script reference: Lines 121-182, 314-345
 
-        Steps:
-        - Assign majority WwTW catchment (fallback to ID 141)
-        - Assign majority LPA (fallback to "UNKNOWN")
-        - Assign majority subcatchment (for WwTW fallback)
+        Uses a single DB session with one temp table for all 3 assignments
+        (WwTW, LPA, subcatchment) instead of creating/dropping 3 separate
+        temp tables.
 
         Args:
             rlb_gdf: GeoDataFrame with rlb_id assigned
@@ -207,80 +213,77 @@ class NutrientAssessment:
         Returns:
             GeoDataFrame with spatial assignments added
         """
-        logger.info("Assigning spatial features via PostGIS server-side overlap")
+        logger.info("Assigning spatial features via batched PostGIS overlap")
 
-        # Assign majority WwTW catchment (legacy lines 121-147)
         t0 = time.perf_counter()
+
+        # Resolve versions once
         wwtw_ver = self._resolve_latest_version(SpatialLayerType.WWTW_CATCHMENTS)
-        wwtw_result = self.repository.majority_overlap_postgis(
+        lpa_ver = self._resolve_latest_version(SpatialLayerType.LPA_BOUNDARIES)
+        sub_ver = self._resolve_latest_version(SpatialLayerType.SUBCATCHMENTS)
+
+        # Batch all 3 assignments in a single DB session / temp table
+        batch_results = self.repository.batch_majority_overlap_postgis(
             input_gdf=rlb_gdf,
-            overlay_table=SpatialLayer,
-            overlay_filter=(
-                (SpatialLayer.layer_type == SpatialLayerType.WWTW_CATCHMENTS)
-                & (SpatialLayer.version == wwtw_ver)
-            ),
             input_id_col="rlb_id",
-            overlay_attr_col=SpatialLayer.attributes["WwTw_ID"].astext,
-            output_field="majority_wwtw_id",
-            default_value=self.config.fallback_wwtw_id,
+            assignments=[
+                {
+                    "overlay_table": SpatialLayer,
+                    "overlay_filter": (
+                        (SpatialLayer.layer_type == SpatialLayerType.WWTW_CATCHMENTS)
+                        & (SpatialLayer.version == wwtw_ver)
+                    ),
+                    "overlay_attr_col": SpatialLayer.attributes["WwTw_ID"].astext,
+                    "output_field": "majority_wwtw_id",
+                    "default_value": self.config.fallback_wwtw_id,
+                },
+                {
+                    "overlay_table": SpatialLayer,
+                    "overlay_filter": (
+                        (SpatialLayer.layer_type == SpatialLayerType.LPA_BOUNDARIES)
+                        & (SpatialLayer.version == lpa_ver)
+                    ),
+                    "overlay_attr_col": SpatialLayer.attributes["NAME"].astext,
+                    "output_field": "majority_name",
+                    "default_value": "UNKNOWN",
+                },
+                {
+                    "overlay_table": SpatialLayer,
+                    "overlay_filter": (
+                        (SpatialLayer.layer_type == SpatialLayerType.SUBCATCHMENTS)
+                        & (SpatialLayer.version == sub_ver)
+                    ),
+                    "overlay_attr_col": SpatialLayer.attributes["OPCAT_NAME"].astext,
+                    "output_field": "majority_opcat_name",
+                    "default_value": None,
+                },
+            ],
         )
-        rlb_gdf = rlb_gdf.merge(wwtw_result, on="rlb_id", how="left")
-        # Cast to int to match downstream expectations (WwTW IDs are integers)
+
+        # Merge results
+        rlb_gdf = rlb_gdf.merge(batch_results["majority_wwtw_id"], on="rlb_id", how="left")
         rlb_gdf["majority_wwtw_id"] = pd.to_numeric(
             rlb_gdf["majority_wwtw_id"], errors="coerce"
         ).fillna(self.config.fallback_wwtw_id).astype(int)
-        elapsed = time.perf_counter() - t0
-        logger.info(f"[timing] spatial: PostGIS majority_overlap WwTW: {elapsed:.3f}s")
         save_debug_gdf(
             rlb_gdf, "04_after_wwtw_assignment",
             self.metadata["unique_ref"], self._debug_config,
         )
 
-        # Assign majority LPA (legacy lines 154-179)
-        t0 = time.perf_counter()
-        lpa_ver = self._resolve_latest_version(SpatialLayerType.LPA_BOUNDARIES)
-        lpa_result = self.repository.majority_overlap_postgis(
-            input_gdf=rlb_gdf,
-            overlay_table=SpatialLayer,
-            overlay_filter=(
-                (SpatialLayer.layer_type == SpatialLayerType.LPA_BOUNDARIES)
-                & (SpatialLayer.version == lpa_ver)
-            ),
-            input_id_col="rlb_id",
-            overlay_attr_col=SpatialLayer.attributes["NAME"].astext,
-            output_field="majority_name",
-            default_value="UNKNOWN",
-        )
-        rlb_gdf = rlb_gdf.merge(lpa_result, on="rlb_id", how="left")
-        elapsed = time.perf_counter() - t0
-        logger.info(f"[timing] spatial: PostGIS majority_overlap LPA: {elapsed:.3f}s")
+        rlb_gdf = rlb_gdf.merge(batch_results["majority_name"], on="rlb_id", how="left")
         save_debug_gdf(
             rlb_gdf, "05_after_lpa_assignment",
             self.metadata["unique_ref"], self._debug_config,
         )
 
-        # Assign majority subcatchment (legacy lines 314-345)
-        t0 = time.perf_counter()
-        sub_ver = self._resolve_latest_version(SpatialLayerType.SUBCATCHMENTS)
-        subcatch_result = self.repository.majority_overlap_postgis(
-            input_gdf=rlb_gdf,
-            overlay_table=SpatialLayer,
-            overlay_filter=(
-                (SpatialLayer.layer_type == SpatialLayerType.SUBCATCHMENTS)
-                & (SpatialLayer.version == sub_ver)
-            ),
-            input_id_col="rlb_id",
-            overlay_attr_col=SpatialLayer.attributes["OPCAT_NAME"].astext,
-            output_field="majority_opcat_name",
-            default_value=None,
-        )
-        rlb_gdf = rlb_gdf.merge(subcatch_result, on="rlb_id", how="left")
-        elapsed = time.perf_counter() - t0
-        logger.info(f"[timing] spatial: PostGIS majority_overlap subcatchment: {elapsed:.3f}s")
+        rlb_gdf = rlb_gdf.merge(batch_results["majority_opcat_name"], on="rlb_id", how="left")
         save_debug_gdf(
             rlb_gdf, "06_after_subcatchment_assignment",
             self.metadata["unique_ref"], self._debug_config,
         )
+
+        elapsed = time.perf_counter() - t0
+        logger.info(f"[timing] spatial: batched PostGIS majority_overlap (3 layers): {elapsed:.3f}s")
 
         return rlb_gdf
 

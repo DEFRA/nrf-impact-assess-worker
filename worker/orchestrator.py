@@ -39,7 +39,11 @@ class JobOrchestrator:
         # self.assessment_type removed from here
 
         # Initialize S3 client (input only)
-        self.s3_input = S3Client(bucket_name=aws_config.s3_input_bucket, region=aws_config.region)
+        self.s3_input = S3Client(
+            bucket_name=aws_config.s3_input_bucket,
+            region=aws_config.region,
+            endpoint_url=aws_config.endpoint_url,
+        )
 
     def process_job(self, job: ImpactAssessmentJob, assessment_type: AssessmentType) -> list:
         """Process a single job end-to-end.

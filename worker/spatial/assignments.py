@@ -101,13 +101,18 @@ def _partition_by_bounds(gdf: gpd.GeoDataFrame, n_chunks: int) -> list[gpd.GeoDa
     x_range = bounds[2] - bounds[0]
     y_range = bounds[3] - bounds[1]
 
+    # Pre-compute centroids once (avoid recomputing on every loop iteration)
+    centroids = gdf.geometry.centroid
+    cx = centroids.x
+    cy = centroids.y
+
     chunks = []
     if x_range >= y_range:
         step = x_range / n_chunks
         for i in range(n_chunks):
             min_x = bounds[0] + i * step
             max_x = bounds[0] + (i + 1) * step if i < n_chunks - 1 else bounds[2] + 1
-            chunk = gdf[gdf.geometry.centroid.x.between(min_x, max_x)]
+            chunk = gdf[cx.between(min_x, max_x)]
             if len(chunk) > 0:
                 chunks.append(chunk)
     else:
@@ -115,7 +120,7 @@ def _partition_by_bounds(gdf: gpd.GeoDataFrame, n_chunks: int) -> list[gpd.GeoDa
         for i in range(n_chunks):
             min_y = bounds[1] + i * step
             max_y = bounds[1] + (i + 1) * step if i < n_chunks - 1 else bounds[3] + 1
-            chunk = gdf[gdf.geometry.centroid.y.between(min_y, max_y)]
+            chunk = gdf[cy.between(min_y, max_y)]
             if len(chunk) > 0:
                 chunks.append(chunk)
 

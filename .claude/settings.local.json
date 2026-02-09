@@ -4,7 +4,9 @@
       "Bash(uv run ruff:*)",
       "Bash(rm:*)",
       "Bash(uv run pytest:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(docker run:*)",
+      "Bash(uv run python:*)"
     ]
   }
 }

@@ -22,13 +22,17 @@ class SQSClient:
         wait_time_seconds: int,
         visibility_timeout: int,
         max_messages: int,
+        endpoint_url: str | None = None,
     ):
         self.queue_url = queue_url
         self.region = region
         self.wait_time_seconds = wait_time_seconds
         self.visibility_timeout = visibility_timeout
         self.max_messages = max_messages
-        self.sqs = boto3.client("sqs", region_name=region)
+        client_kwargs: dict = {"region_name": region}
+        if endpoint_url:
+            client_kwargs["endpoint_url"] = endpoint_url
+        self.sqs = boto3.client("sqs", **client_kwargs)
 
     def receive_messages(self) -> list[tuple[ImpactAssessmentJob, str]]:
         """Poll SQS for job messages.

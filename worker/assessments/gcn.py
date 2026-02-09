@@ -86,10 +86,14 @@ class GcnAssessment:
         )
         filter_wkt = combined_extent.union_all().wkt
 
-        # Load risk zones (14k features - load all, clip locally)
-        logger.info("Loading risk zones from repository")
+        # Load risk zones with PostGIS spatial filter (14k → ~50-200 in extent)
+        logger.info("Loading risk zones from repository (spatially filtered)")
         stmt = select(SpatialLayer).where(
-            SpatialLayer.layer_type == SpatialLayerType.GCN_RISK_ZONES
+            SpatialLayer.layer_type == SpatialLayerType.GCN_RISK_ZONES,
+            ST_Intersects(
+                SpatialLayer.geometry,
+                ST_SetSRID(ST_GeomFromText(filter_wkt), 27700),
+            ),
         )
         risk_zones = self.repository.execute_query(stmt, as_gdf=True)
 

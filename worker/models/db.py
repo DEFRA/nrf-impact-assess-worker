@@ -19,7 +19,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, Enum, Float, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Enum, Float, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -118,7 +118,10 @@ class SpatialLayer(Base):
     """
 
     __tablename__ = "spatial_layer"
-    __table_args__ = {"schema": "nrf_reference"}
+    __table_args__ = (
+        Index("ix_spatial_layer_type_version", "layer_type", "version"),
+        {"schema": "nrf_reference"},
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     layer_type: Mapped[SpatialLayerType] = mapped_column(

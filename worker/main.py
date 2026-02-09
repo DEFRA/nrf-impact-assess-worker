@@ -205,6 +205,7 @@ def main():
             wait_time_seconds=worker_config.wait_time_seconds,
             visibility_timeout=worker_config.visibility_timeout,
             max_messages=worker_config.max_messages,
+            endpoint_url=aws_config.endpoint_url,
         )
 
         orchestrator = JobOrchestrator(

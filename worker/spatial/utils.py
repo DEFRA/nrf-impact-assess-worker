@@ -61,7 +61,5 @@ def apply_precision(
         https://pro.arcgis.com/en/pro-app/latest/help/editing/pdf/parcel_fabric_precision.pdf
     """
     gdf = gdf.copy()
-    gdf["geometry"] = gdf.geometry.apply(
-        lambda geom: set_precision(geom, grid_size=grid_size) if geom else geom
-    )
+    gdf["geometry"] = set_precision(gdf.geometry.values, grid_size=grid_size)
     return gdf
