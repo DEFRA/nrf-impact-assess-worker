@@ -137,7 +137,7 @@ class Repository:
             insert_values = [
                 {"input_id": int(input_id), "geom_wkt": wkt}
                 for input_id, wkt in zip(
-                    input_gdf[input_id_col], input_gdf.geometry.to_wkt()
+                    input_gdf[input_id_col], input_gdf.geometry.to_wkt(), strict=False
                 )
             ]
             session.execute(
@@ -242,7 +242,7 @@ class Repository:
             insert_values = [
                 {"input_id": int(input_id), "geom_wkt": wkt}
                 for input_id, wkt in zip(
-                    input_gdf[input_id_col], input_gdf.geometry.to_wkt()
+                    input_gdf[input_id_col], input_gdf.geometry.to_wkt(), strict=False
                 )
             ]
             session.execute(
