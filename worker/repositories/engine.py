@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool, QueuePool
 
+from worker.common import tls
 from worker.config import AWSConfig, DatabaseSettings
 
 logger = logging.getLogger(__name__)
@@ -150,26 +151,22 @@ def create_db_engine(
         # Configure SSL for RDS IAM authentication
         connect_args["sslmode"] = settings.ssl_mode
 
-        if settings.ssl_cert:
-            # Use custom CA certificate from CDP truststore
-            if os.path.exists(settings.ssl_cert):
-                connect_args["sslrootcert"] = settings.ssl_cert
-                logger.info(
-                    "SSL enabled: sslmode=%s, sslrootcert=%s (region=%s)",
-                    settings.ssl_mode,
-                    settings.ssl_cert,
-                    region,
-                )
-            else:
-                logger.warning(
-                    "SSL cert path configured but file not found: %s (using sslmode=%s without cert)",
-                    settings.ssl_cert,
-                    settings.ssl_mode,
-                )
+        # Try to get CA certificate from CDP truststore (TRUSTSTORE_* env vars)
+        cert_path = tls.get_cert_path(settings.rds_truststore)
+        if cert_path:
+            connect_args["sslrootcert"] = cert_path
+            logger.info(
+                "SSL enabled: sslmode=%s, sslrootcert=%s (from TRUSTSTORE_%s, region=%s)",
+                settings.ssl_mode,
+                cert_path,
+                settings.rds_truststore,
+                region,
+            )
         else:
             logger.info(
-                "SSL enabled: sslmode=%s, no custom CA cert configured (region=%s)",
+                "SSL enabled: sslmode=%s, no TRUSTSTORE_%s cert found (region=%s)",
                 settings.ssl_mode,
+                settings.rds_truststore,
                 region,
             )
 

@@ -298,12 +298,12 @@ class DatabaseSettings(BaseSettings):
     - DB_IAM_AUTHENTICATION: Enable IAM auth (default: true)
     - DB_LOCAL_PASSWORD: Static password for local dev (default: empty)
     - DB_SSL_MODE: SSL mode - require, verify-ca, verify-full (default: require)
-    - DB_SSL_CERT: Path to RDS CA certificate from CDP truststore (default: none)
+    - DB_RDS_TRUSTSTORE: Name of TRUSTSTORE_* env var for RDS cert (default: RDS)
 
     When DB_IAM_AUTHENTICATION=true:
     - Requests short-lived tokens from AWS RDS
     - Enables SSL/TLS with configured ssl_mode
-    - Uses custom CA cert if DB_SSL_CERT is provided
+    - Uses CA cert from TRUSTSTORE_* env var if available
     - Connection pool recycling is set to 10 min (tokens expire at 15 min)
     """
 
@@ -336,9 +336,9 @@ class DatabaseSettings(BaseSettings):
         default="require",
         description="SSL mode for database connections (require, verify-ca, verify-full)",
     )
-    ssl_cert: str | None = Field(
-        default=None,
-        description="Path to RDS CA certificate (from CDP rds_truststore)",
+    rds_truststore: str = Field(
+        default="RDS",
+        description="Name of TRUSTSTORE_* env var containing RDS CA cert (e.g., 'RDS' for TRUSTSTORE_RDS)",
     )
 
     @property
