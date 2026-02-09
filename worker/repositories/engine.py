@@ -30,16 +30,36 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
 
     Returns:
         Short-lived authentication token (valid for 15 minutes).
+
+    Raises:
+        Exception: If token generation fails (e.g., missing IAM permissions).
     """
-    client = boto3.client("rds", region_name=region)
-    token = client.generate_db_auth_token(
-        DBHostname=settings.host,
-        Port=settings.port,
-        DBUsername=settings.user,
-        Region=region,
+    logger.debug(
+        "Requesting IAM auth token for host=%s, port=%d, user=%s, region=%s",
+        settings.host,
+        settings.port,
+        settings.user,
+        region,
     )
-    logger.debug("Generated IAM auth token for RDS connection")
-    return token
+    try:
+        client = boto3.client("rds", region_name=region)
+        token = client.generate_db_auth_token(
+            DBHostname=settings.host,
+            Port=settings.port,
+            DBUsername=settings.user,
+            Region=region,
+        )
+        # Token is a long string - just log that we got one, not the value
+        logger.debug("Successfully generated IAM auth token (length=%d)", len(token))
+        return token
+    except Exception:
+        logger.exception(
+            "Failed to generate IAM auth token for host=%s, user=%s, region=%s",
+            settings.host,
+            settings.user,
+            region,
+        )
+        raise
 
 
 def _get_password(settings: DatabaseSettings, region: str) -> str:
@@ -94,6 +114,16 @@ def create_db_engine(
     # Get AWS region for IAM auth
     region = aws_config.region if aws_config else os.environ.get("AWS_REGION", "eu-west-2")
 
+    # Log connection configuration (never log passwords/tokens)
+    logger.info(
+        "Configuring database connection: host=%s, port=%d, database=%s, user=%s, iam_auth=%s",
+        settings.host,
+        settings.port,
+        settings.database,
+        settings.user,
+        settings.iam_authentication,
+    )
+
     # Build base connection URL
     base_url = settings.connection_url
 
@@ -107,7 +137,7 @@ def create_db_engine(
         # rejectUnauthorized: false). CDP provides certs via cdp-app-config but
         # the secureContext pattern doesn't directly apply to Python/psycopg2.
         connect_args["sslmode"] = "require"
-        logger.info("SSL enabled with sslmode=require for IAM authentication")
+        logger.info("SSL enabled with sslmode=require for IAM authentication (region=%s)", region)
 
     # Create engine based on pooling strategy
     if use_null_pool:
@@ -148,10 +178,14 @@ def create_db_engine(
             @event.listens_for(engine, "do_connect")
             def provide_token(_dialect, _conn_rec, _cargs, cparams):
                 """Inject fresh IAM token before each connection."""
+                logger.debug("do_connect event: requesting fresh IAM token")
                 cparams["password"] = _get_iam_auth_token(settings, region)
+                logger.debug("do_connect event: IAM token injected into connection params")
 
             logger.info(
-                "Created engine with IAM authentication (pool_recycle=%ds)",
+                "Created engine with IAM authentication: pool_size=%d, max_overflow=%d, pool_recycle=%ds",
+                pool_size,
+                max_overflow,
                 pool_recycle,
             )
         else:
@@ -162,8 +196,10 @@ def create_db_engine(
                     f"{settings.user}@",
                     f"{settings.user}:{password}@",
                 )
+                logger.debug("Using static password for local authentication")
             else:
                 url_with_password = base_url
+                logger.debug("No password configured (using trust authentication)")
 
             engine = create_engine(
                 url_with_password,
@@ -174,6 +210,10 @@ def create_db_engine(
                 echo=echo,
                 connect_args=connect_args if connect_args else {},
             )
-            logger.info("Created engine with local authentication")
+            logger.info(
+                "Created engine with local authentication: pool_size=%d, max_overflow=%d",
+                pool_size,
+                max_overflow,
+            )
 
     return engine
