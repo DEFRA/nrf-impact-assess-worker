@@ -66,8 +66,13 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
             DBUsername=settings.user,
             Region=region,
         )
-        # Token is a long string - just log that we got one, not the value
-        logger.info("Successfully generated IAM auth token (length=%d chars)", len(token))
+        # Log token details for debugging (not the full token for security)
+        logger.info(
+            "Successfully generated IAM auth token: length=%d, starts_with=%s..., ends_with=...%s",
+            len(token),
+            token[:50] if len(token) > 50 else token,
+            token[-20:] if len(token) > 20 else token,
+        )
         return token
     except Exception:
         logger.exception(

@@ -144,7 +144,9 @@ def check_database_connection(
 ) -> bool:
     """Check if the database is accessible.
 
-    Attempts to connect and execute a simple query.
+    Attempts to connect and execute a simple query using the same
+    connection pattern as the main engine (QueuePool with do_connect event).
+
     Returns True if successful, False otherwise.
     Logs warnings on failure but does not raise exceptions.
 
@@ -153,7 +155,8 @@ def check_database_connection(
         aws_config: AWS configuration (needed for IAM auth region).
     """
     try:
-        engine = create_db_engine(db_settings, aws_config, use_null_pool=True)
+        # Use same connection pattern as main engine (QueuePool with do_connect event)
+        engine = create_db_engine(db_settings, aws_config, pool_size=1, max_overflow=0)
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         engine.dispose()
