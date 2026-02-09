@@ -34,15 +34,31 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
     Raises:
         Exception: If token generation fails (e.g., missing IAM permissions).
     """
-    logger.debug(
-        "Requesting IAM auth token for host=%s, port=%d, user=%s, region=%s",
+    logger.info(
+        "Requesting IAM auth token: host=%s, port=%d, user=%s, region=%s",
         settings.host,
         settings.port,
         settings.user,
         region,
     )
     try:
-        client = boto3.client("rds", region_name=region)
+        # Create RDS client - boto3 automatically uses ECS task role credentials
+        # via the container credentials endpoint (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)
+        session = boto3.Session(region_name=region)
+        credentials = session.get_credentials()
+
+        if credentials:
+            # Log credential source (not the actual secret values)
+            frozen_credentials = credentials.get_frozen_credentials()
+            logger.info(
+                "AWS credentials found: access_key_id=%s..., method=%s",
+                frozen_credentials.access_key[:8] if frozen_credentials.access_key else "None",
+                credentials.method,
+            )
+        else:
+            logger.warning("No AWS credentials found - token generation may fail")
+
+        client = session.client("rds")
         token = client.generate_db_auth_token(
             DBHostname=settings.host,
             Port=settings.port,
@@ -50,7 +66,7 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
             Region=region,
         )
         # Token is a long string - just log that we got one, not the value
-        logger.debug("Successfully generated IAM auth token (length=%d)", len(token))
+        logger.info("Successfully generated IAM auth token (length=%d chars)", len(token))
         return token
     except Exception:
         logger.exception(
@@ -141,8 +157,9 @@ def create_db_engine(
 
     # Create engine based on pooling strategy
     if use_null_pool:
-        # NullPool: No connection pooling, useful for testing
+        # NullPool: No connection pooling, useful for testing/connection checks
         # Get password once since connections aren't pooled
+        logger.info("Generating authentication token for connection check")
         password = _get_password(settings, region)
         url_with_password = base_url.replace(
             f"{settings.user}@",
@@ -154,6 +171,7 @@ def create_db_engine(
             echo=echo,
             connect_args=connect_args if connect_args else {},
         )
+        logger.info("Created engine with NullPool for connection check")
     else:
         # QueuePool: Standard connection pooling for production
         # For IAM auth, we need fresh tokens for each connection
