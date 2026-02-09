@@ -34,15 +34,31 @@ def _get_iam_auth_token(settings: DatabaseSettings, region: str) -> str:
     Raises:
         Exception: If token generation fails (e.g., missing IAM permissions).
     """
-    logger.debug(
-        "Requesting IAM auth token for host=%s, port=%d, user=%s, region=%s",
+    logger.info(
+        "Requesting IAM auth token: host=%s, port=%d, user=%s, region=%s",
         settings.host,
         settings.port,
         settings.user,
         region,
     )
     try:
-        client = boto3.client("rds", region_name=region)
+        # Create RDS client - boto3 automatically uses ECS task role credentials
+        # via the container credentials endpoint (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)
+        session = boto3.Session(region_name=region)
+        credentials = session.get_credentials()
+
+        if credentials:
+            # Log credential source (not the actual secret values)
+            frozen_credentials = credentials.get_frozen_credentials()
+            logger.info(
+                "AWS credentials found: access_key_id=%s..., method=%s",
+                frozen_credentials.access_key[:8] if frozen_credentials.access_key else "None",
+                credentials.method,
+            )
+        else:
+            logger.warning("No AWS credentials found - token generation may fail")
+
+        client = session.client("rds")
         token = client.generate_db_auth_token(
             DBHostname=settings.host,
             Port=settings.port,
