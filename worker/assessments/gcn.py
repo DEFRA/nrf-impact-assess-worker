@@ -13,6 +13,7 @@ from geoalchemy2.functions import ST_GeomFromText, ST_Intersects, ST_SetSRID
 from shapely.ops import unary_union
 from sqlalchemy import select
 
+from worker.config import DEFAULT_GCN_CONFIG, GcnConfig
 from worker.models.db import SpatialLayer
 from worker.models.enums import SpatialLayerType
 from worker.repositories.repository import Repository
@@ -21,8 +22,6 @@ from worker.spatial.overlay import buffer_with_dissolve
 from worker.spatial.utils import ensure_crs
 
 logger = logging.getLogger(__name__)
-
-BUFFER_DISTANCE_M = 250
 
 
 class GcnAssessment:
@@ -39,6 +38,7 @@ class GcnAssessment:
         rlb_gdf: gpd.GeoDataFrame,
         metadata: dict,
         repository: Repository,
+        config: GcnConfig = DEFAULT_GCN_CONFIG,
     ):
         """Initialize GCN assessment.
 
@@ -46,10 +46,12 @@ class GcnAssessment:
             rlb_gdf: Red Line Boundary GeoDataFrame (already in BNG)
             metadata: Must contain "unique_ref", optionally "survey_ponds_path"
             repository: Data repository for loading reference data
+            config: GCN configuration (buffer distances, precision, target CRS)
         """
         self.rlb_gdf = rlb_gdf
         self.metadata = metadata
         self.repository = repository
+        self.config = config
 
     def run(self) -> dict[str, pd.DataFrame]:
         """Run GCN impact assessment.
@@ -65,48 +67,61 @@ class GcnAssessment:
         """
         unique_ref = self.metadata["unique_ref"]
         survey_ponds_path = self.metadata.get("survey_ponds_path")
+        target_srid = _crs_to_srid(self.config.target_crs)
 
         logger.info(f"Running GCN assessment: {unique_ref}")
 
         # Prepare RLB and buffer first to create spatial filter extent
-        rlb = ensure_crs(self.rlb_gdf)
+        rlb = ensure_crs(self.rlb_gdf, target_crs=self.config.target_crs)
         rlb = make_valid_geometries(rlb)
         rlb["UniqueRef"] = unique_ref
 
-        logger.info(f"Creating {BUFFER_DISTANCE_M}m buffer")
-        rlb_buffered = buffer_with_dissolve(rlb, BUFFER_DISTANCE_M, dissolve=True)
+        logger.info(f"Creating {self.config.buffer_distance_m}m buffer")
+        rlb_buffered = buffer_with_dissolve(
+            rlb,
+            self.config.buffer_distance_m,
+            dissolve=True,
+            grid_size=self.config.precision_grid_size,
+        )
         rlb_buffered["Area"] = "Buffer"
 
         rlb["Area"] = "RLB"
         rlb_with_buffer = pd.concat([rlb, rlb_buffered], ignore_index=True)
 
         # Create combined extent for spatial filtering
+        combined_geom = unary_union(rlb_with_buffer.geometry)
         combined_extent = gpd.GeoDataFrame(
-            {"geometry": [unary_union(rlb_with_buffer.geometry)]}, crs=rlb_with_buffer.crs
+            {"geometry": [combined_geom]}, crs=rlb_with_buffer.crs
         )
-        filter_wkt = combined_extent.union_all().wkt
+        filter_wkt = combined_geom.wkt
 
-        # Load risk zones with PostGIS spatial filter (14k → ~50-200 in extent)
-        logger.info("Loading risk zones from repository (spatially filtered)")
-        stmt = select(SpatialLayer).where(
-            SpatialLayer.layer_type == SpatialLayerType.GCN_RISK_ZONES,
-            ST_Intersects(
-                SpatialLayer.geometry,
-                ST_SetSRID(ST_GeomFromText(filter_wkt), 27700),
-            ),
+        # Load and clip risk zones server-side in PostGIS to reduce transfer + local overlay work.
+        logger.info("Loading risk zones from repository (server-side clipped)")
+        risk_zones_clipped = self.repository.intersection_postgis(
+            input_gdf=combined_extent,
+            overlay_table=SpatialLayer,
+            overlay_filter=(SpatialLayer.layer_type == SpatialLayerType.GCN_RISK_ZONES),
+            overlay_columns=["attributes"],
         )
-        risk_zones = self.repository.execute_query(stmt, as_gdf=True)
 
         # Extract RZ from attributes JSONB column
-        if "attributes" in risk_zones.columns:
-            risk_zones["RZ"] = risk_zones["attributes"].apply(lambda x: x.get("RZ") if x else None)
-        logger.info(f"Loaded {len(risk_zones)} risk zone features")
+        if "attributes" in risk_zones_clipped.columns:
+            risk_zones_clipped["RZ"] = risk_zones_clipped["attributes"].apply(
+                lambda x: x.get("RZ") if x else None
+            )
+        if "RZ" not in risk_zones_clipped.columns:
+            msg = "Risk zones missing required 'RZ' attribute"
+            raise ValueError(msg)
+        if risk_zones_clipped["RZ"].isna().all():
+            msg = "Risk zones missing required 'RZ' values"
+            raise ValueError(msg)
+        logger.info(f"Loaded {len(risk_zones_clipped)} risk zone features")
 
         # Load ponds - either from survey file or national dataset with spatial filtering
         if survey_ponds_path:
             logger.info(f"Loading survey ponds: {survey_ponds_path}")
             ponds = gpd.read_file(survey_ponds_path)
-            ponds = ensure_crs(ponds)
+            ponds = ensure_crs(ponds, target_crs=self.config.target_crs)
             if "PANS" not in ponds.columns:
                 msg = "Survey ponds must have 'PANS' column"
                 raise ValueError(msg)
@@ -120,7 +135,7 @@ class GcnAssessment:
                 SpatialLayer.layer_type == SpatialLayerType.GCN_PONDS,
                 ST_Intersects(
                     SpatialLayer.geometry,
-                    ST_SetSRID(ST_GeomFromText(filter_wkt), 27700),
+                    ST_SetSRID(ST_GeomFromText(filter_wkt), target_srid),
                 ),
             )
             ponds = self.repository.execute_query(stmt, as_gdf=True)
@@ -128,24 +143,21 @@ class GcnAssessment:
             ponds["TmpImp"] = "F"  # No temporary impact
             logger.info(f"Loaded {len(ponds)} ponds within RLB+buffer extent")
 
-        logger.info("Clipping risk zones to RLB+Buffer extent")
-        risk_zones_clipped = clip_gdf(risk_zones, combined_extent)
-        logger.info(f"Clipped to {len(risk_zones_clipped)} risk zone features")
-
         logger.info("Assigning ponds to RLB and Buffer areas")
         # CRITICAL: Match legacy script's pond selection order (see docs/bug-fix.md)
         # Step 1: Clip ALL ponds to combined extent first (creates localized subset)
-        all_ponds_clipped = spatial_join_intersect(ponds, combined_extent[["geometry"]])
+        all_ponds_clipped = clip_gdf(ponds, combined_extent[["geometry"]])
 
         # Step 2: Select RLB ponds from the clipped subset
-        ponds_in_rlb = spatial_join_intersect(all_ponds_clipped, rlb[["geometry"]])
-        ponds_in_rlb["Area"] = "RLB"
-
-        # Step 3: Select buffer ponds from clipped subset (inverted selection)
-        # Find ponds that intersect RLB, then get ponds NOT in that set
         rlb_intersecting_ponds = gpd.sjoin(
             all_ponds_clipped, rlb[["geometry"]], predicate="intersects", how="inner"
         )
+        rlb_pond_indices = rlb_intersecting_ponds.index.unique()
+        ponds_in_rlb = all_ponds_clipped.loc[rlb_pond_indices].copy()
+        ponds_in_rlb = clip_gdf(ponds_in_rlb, rlb[["geometry"]])
+        ponds_in_rlb["Area"] = "RLB"
+
+        # Step 3: Select buffer ponds from clipped subset (inverted selection)
         ponds_in_buffer = all_ponds_clipped[
             ~all_ponds_clipped.index.isin(rlb_intersecting_ponds.index)
         ].copy()
@@ -155,7 +167,13 @@ class GcnAssessment:
         logger.info(f"Found {len(ponds_in_rlb)} ponds in RLB, {len(ponds_in_buffer)} in buffer")
 
         logger.info("Calculating habitat impact")
-        habitat_impact = _calculate_habitat_impact(rlb_with_buffer, risk_zones_clipped, all_ponds)
+        habitat_impact = _calculate_habitat_impact(
+            rlb_with_buffer,
+            risk_zones_clipped,
+            all_ponds,
+            pond_buffer_distance_m=self.config.pond_buffer_distance_m,
+            precision_grid_size=self.config.precision_grid_size,
+        )
 
         logger.info("Calculating pond frequency")
         pond_frequency = _calculate_pond_frequency(
@@ -171,6 +189,8 @@ def _calculate_habitat_impact(
     rlb_with_buffer: gpd.GeoDataFrame,
     risk_zones: gpd.GeoDataFrame,
     ponds: gpd.GeoDataFrame,
+    pond_buffer_distance_m: int = 250,
+    precision_grid_size: float = 0.0001,
 ) -> pd.DataFrame:
     """Calculate habitat impact by risk zone.
 
@@ -188,14 +208,23 @@ def _calculate_habitat_impact(
         - RZ: Risk zone ("Red", "Amber", or "Green")
         - Shape_Area: Area in square metres
     """
-    # Buffer ponds by 250m and dissolve
-    ponds_buffered = buffer_with_dissolve(ponds, BUFFER_DISTANCE_M, dissolve=True)
+    # Buffer ponds and dissolve
+    ponds_buffered = buffer_with_dissolve(
+        ponds,
+        pond_buffer_distance_m,
+        dissolve=True,
+        grid_size=precision_grid_size,
+    )
 
     # Clip risk zones to pond buffer (only habitat within pond buffers counts)
     risk_zones_in_pond_buffer = clip_gdf(risk_zones, ponds_buffered)
 
     # Intersect with RLB+Buffer to get habitat impact
-    habitat_impact = spatial_join_intersect(rlb_with_buffer, risk_zones_in_pond_buffer)
+    habitat_impact = spatial_join_intersect(
+        rlb_with_buffer,
+        risk_zones_in_pond_buffer,
+        grid_size=precision_grid_size,
+    )
 
     # Calculate areas
     habitat_impact["Shape_Area"] = habitat_impact.geometry.area
@@ -245,8 +274,13 @@ def _calculate_pond_frequency(
     # Combine and assign risk zones
     all_ponds = pd.concat([ponds_in_rlb, ponds_in_buffer], ignore_index=True)
 
-    # Join ponds with risk zones to get which zones each pond intersects
-    ponds_with_zones = spatial_join_intersect(all_ponds, risk_zones[["geometry", "RZ"]])
+    # For frequency counts we only need relationship (intersects), not split geometries.
+    ponds_with_zones = gpd.sjoin(
+        all_ponds,
+        risk_zones[["geometry", "RZ"]],
+        how="inner",
+        predicate="intersects",
+    )
 
     # Group by pond and concatenate zones (only need Pond_ID, PANS, TmpImp, Area, RZ)
     pond_zones = (
@@ -277,3 +311,10 @@ def _calculate_pond_frequency(
         .reset_index(name="FREQUENCY")
     )
 
+
+def _crs_to_srid(crs: str) -> int:
+    """Extract SRID integer from EPSG CRS string."""
+    if not crs.startswith("EPSG:"):
+        msg = f"Unsupported CRS format: {crs}. Expected 'EPSG:<srid>'."
+        raise ValueError(msg)
+    return int(crs.split(":", maxsplit=1)[1])

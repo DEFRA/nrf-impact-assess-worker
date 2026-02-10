@@ -12,6 +12,7 @@ from worker.assessments.gcn import (
     _calculate_habitat_impact,
     _calculate_pond_frequency,
 )
+from worker.config import GcnConfig
 from worker.models.enums import SpatialLayerType
 
 
@@ -109,6 +110,37 @@ def mock_repository(sample_risk_zones, sample_ponds, sample_edp_edges):
         return gpd.GeoDataFrame()
 
     repo.execute_query.side_effect = execute_query_side_effect
+
+    def intersection_postgis_side_effect(
+        input_gdf,
+        overlay_table,
+        overlay_filter,
+        overlay_columns,
+    ):
+        layer_type_param = None
+        try:
+            # Simple WHERE clause: layer_type == X
+            layer_type_param = overlay_filter.right.value
+        except AttributeError:
+            # Compound WHERE clause fallback
+            try:
+                for clause in overlay_filter.clauses:
+                    if hasattr(clause, "right") and hasattr(clause.right, "value"):
+                        if isinstance(clause.right.value, SpatialLayerType):
+                            layer_type_param = clause.right.value
+                            break
+            except AttributeError:
+                pass
+
+        if layer_type_param == SpatialLayerType.GCN_RISK_ZONES:
+            return sample_risk_zones.copy()
+        if layer_type_param == SpatialLayerType.GCN_PONDS:
+            return sample_ponds.copy()
+        if layer_type_param == SpatialLayerType.EDP_EDGES:
+            return sample_edp_edges.copy()
+        return gpd.GeoDataFrame()
+
+    repo.intersection_postgis.side_effect = intersection_postgis_side_effect
     return repo
 
 
@@ -128,8 +160,11 @@ def test_run_assessment_basic(sample_rlb, mock_repository):
     assert isinstance(results["habitat_impact"], pd.DataFrame)
     assert isinstance(results["pond_frequency"], pd.DataFrame)
 
-    # Verify repository was called 2 times (risk zones, ponds)
-    assert mock_repository.execute_query.call_count == 2
+    # Verify repository calls:
+    # - risk zones via server-side intersection
+    # - ponds via execute_query (national route)
+    assert mock_repository.intersection_postgis.call_count == 1
+    assert mock_repository.execute_query.call_count == 1
 
 
 def test_run_assessment_with_survey_ponds(sample_rlb, mock_repository, tmp_path):
@@ -158,6 +193,19 @@ def test_run_assessment_with_survey_ponds(sample_rlb, mock_repository, tmp_path)
     assert "pond_frequency" in results
 
 
+def test_run_assessment_respects_custom_buffer_config(sample_rlb, mock_repository):
+    """Test GCN config wiring by forcing zero RLB/buffer distances."""
+    metadata = {"unique_ref": "20250115123456"}
+    config = GcnConfig(buffer_distance_m=0, pond_buffer_distance_m=0)
+
+    assessment = GcnAssessment(sample_rlb, metadata, mock_repository, config=config)
+    results = assessment.run()
+
+    # With zero RLB buffer, there should be no "Buffer" pond assignments
+    if len(results["pond_frequency"]) > 0:
+        assert not (results["pond_frequency"]["Area"] == "Buffer").any()
+
+
 def test_run_assessment_missing_unique_ref(sample_rlb, mock_repository):
     """Test error when unique_ref is missing from metadata."""
     metadata = {}  # Missing unique_ref
@@ -181,6 +229,32 @@ def test_run_assessment_survey_ponds_missing_pans(sample_rlb, mock_repository, t
 
     assessment = GcnAssessment(sample_rlb, metadata, mock_repository)
     with pytest.raises(ValueError, match="Survey ponds must have 'PANS' column"):
+        assessment.run()
+
+
+def test_run_assessment_raises_when_risk_zones_missing_rz(sample_rlb):
+    """Test explicit error when risk zones lack required RZ field."""
+    repo = Mock()
+
+    risk_zones_missing_rz = gpd.GeoDataFrame(
+        {
+            "name": ["zone_1"],
+            "geometry": [Polygon([(450000, 100000), (450200, 100000), (450200, 100200), (450000, 100200)])],
+        },
+        crs="EPSG:27700",
+    )
+
+    national_ponds = gpd.GeoDataFrame(
+        {"geometry": [Point(450050, 100050)]},
+        crs="EPSG:27700",
+    )
+
+    # GCN run() queries risk zones via intersection_postgis, then ponds via execute_query
+    repo.intersection_postgis.return_value = risk_zones_missing_rz
+    repo.execute_query.return_value = national_ponds
+
+    assessment = GcnAssessment(sample_rlb, {"unique_ref": "20250115123456"}, repo)
+    with pytest.raises(ValueError, match="Risk zones missing required 'RZ' attribute"):
         assessment.run()
 
 
