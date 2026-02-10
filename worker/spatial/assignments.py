@@ -111,16 +111,22 @@ def _partition_by_bounds(gdf: gpd.GeoDataFrame, n_chunks: int) -> list[gpd.GeoDa
         step = x_range / n_chunks
         for i in range(n_chunks):
             min_x = bounds[0] + i * step
-            max_x = bounds[0] + (i + 1) * step if i < n_chunks - 1 else bounds[2] + 1
-            chunk = gdf[cx.between(min_x, max_x)]
+            max_x = bounds[0] + (i + 1) * step
+            if i < n_chunks - 1:
+                chunk = gdf[(cx >= min_x) & (cx < max_x)]
+            else:
+                chunk = gdf[(cx >= min_x) & (cx <= bounds[2])]
             if len(chunk) > 0:
                 chunks.append(chunk)
     else:
         step = y_range / n_chunks
         for i in range(n_chunks):
             min_y = bounds[1] + i * step
-            max_y = bounds[1] + (i + 1) * step if i < n_chunks - 1 else bounds[3] + 1
-            chunk = gdf[cy.between(min_y, max_y)]
+            max_y = bounds[1] + (i + 1) * step
+            if i < n_chunks - 1:
+                chunk = gdf[(cy >= min_y) & (cy < max_y)]
+            else:
+                chunk = gdf[(cy >= min_y) & (cy <= bounds[3])]
             if len(chunk) > 0:
                 chunks.append(chunk)
 
@@ -185,15 +191,23 @@ def majority_overlap(
 
     logger.info(f"Processing {len(input_gdf)} features in {len(chunks)} parallel chunks")
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
-                _process_overlap_chunk,
-                chunk, overlay_gdf, input_id_col, overlay_attr_col, output_field, default_value
-            )
-            for chunk in chunks
-        ]
-        results = [f.result() for f in futures]
+    try:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    _process_overlap_chunk,
+                    chunk, overlay_gdf, input_id_col, overlay_attr_col, output_field, default_value
+                )
+                for chunk in chunks
+            ]
+            results = [f.result() for f in futures]
+    except (NotImplementedError, PermissionError, OSError) as exc:
+        logger.warning(
+            f"Parallel majority_overlap unavailable ({exc}); falling back to sequential"
+        )
+        return _majority_overlap_sequential(
+            input_gdf, overlay_gdf, input_id_col, overlay_attr_col, output_field, default_value
+        )
 
     # Combine results
     combined = pd.concat(results, ignore_index=True)
