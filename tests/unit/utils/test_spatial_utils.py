@@ -1,6 +1,7 @@
 """Unit tests for spatial utilities."""
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import Point, Polygon
 
@@ -295,3 +296,27 @@ def test_majority_overlap_returns_geodataframe(simple_target_gdf, simple_overlay
     assert isinstance(result, gpd.GeoDataFrame)
     assert "geometry" in result.columns
     assert len(result) == len(simple_target_gdf)  # Same number of rows
+
+
+def test_partition_by_bounds_no_duplicate_rows_on_chunk_boundary():
+    """Test chunk partitioning does not duplicate features on boundaries."""
+    from worker.spatial.assignments import _partition_by_bounds
+
+    # Build 100 features
+    input_geoms = [
+        Polygon([(i, 0), (i + 1, 0), (i + 1, 1), (i, 1)])
+        for i in range(100)
+    ]
+    input_gdf = gpd.GeoDataFrame(
+        {"RLB_ID": list(range(100))},
+        geometry=input_geoms,
+        crs="EPSG:27700",
+    )
+
+    chunks = _partition_by_bounds(input_gdf, n_chunks=2)
+    assert len(chunks) == 2
+
+    # Every original row should appear exactly once across chunks
+    combined_ids = pd.concat([chunk["RLB_ID"] for chunk in chunks], ignore_index=True)
+    assert len(combined_ids) == len(input_gdf)
+    assert combined_ids.nunique() == len(input_gdf)
