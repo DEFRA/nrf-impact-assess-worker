@@ -76,15 +76,22 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
-def run_health_server(port: int) -> None:
+def run_health_server(port: int, use_dev_api: bool = False) -> None:
     """Run the health check server in a separate process.
 
     Uses uvicorn as an ASGI server to serve the FastAPI app.
 
     Args:
         port: The port to listen on for health check requests.
+        use_dev_api: If True, use the dev API app with test endpoints instead
+            of the minimal health-only app. Only used for local development.
     """
-    uvicorn.run(health_app, host="0.0.0.0", port=port, log_level="warning")
+    if use_dev_api:
+        from worker.api import app as dev_app
+
+        uvicorn.run(dev_app, host="0.0.0.0", port=port, log_level="info")
+    else:
+        uvicorn.run(health_app, host="0.0.0.0", port=port, log_level="warning")
 
 
 class SqsConsumer:
@@ -186,13 +193,21 @@ def main():
         logger.info("Initializing worker components...")
 
         # Start health server in separate process for CDP ECS health checks
+        # In local dev, use the expanded API with test endpoints
+        use_dev_api = not is_running_in_ecs()
         health_process = multiprocessing.Process(
             target=run_health_server,
-            args=(health_config.port,),
+            args=(health_config.port, use_dev_api),
             daemon=True,
         )
         health_process.start()
-        logger.info(f"Health server started on port {health_config.port}")
+        if use_dev_api:
+            logger.info(
+                f"Dev API server started on port {health_config.port} "
+                f"(endpoints: /health, /test/submit, /test/run)"
+            )
+        else:
+            logger.info(f"Health server started on port {health_config.port}")
 
         # Initialize PostGIS repository (ONCE - reused across jobs)
         # Uses IAM authentication in CDP cloud, static password locally
