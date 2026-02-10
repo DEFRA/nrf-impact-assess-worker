@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from worker.aws.sqs import SQSClient
-from worker.config import AWSConfig, DatabaseSettings, HealthConfig, WorkerConfig
+from worker.config import AWSConfig, DatabaseSettings, HealthConfig, NotifyConfig, WorkerConfig
 from worker.health import app as health_app
 from worker.orchestrator import JobOrchestrator
 from worker.repositories.engine import create_db_engine
@@ -179,6 +179,7 @@ def main():
         worker_config = WorkerConfig()
         health_config = HealthConfig()
         db_settings = DatabaseSettings()
+        notify_config = NotifyConfig()
 
         # Check database connectivity early
         check_database_connection(db_settings, aws_config)
@@ -200,7 +201,7 @@ def main():
         repository = Repository(engine)
 
         financial_service = FinancialCalculationService()
-        email_service = EmailService()
+        email_service = EmailService(notify_config)
 
         sqs_client = SQSClient(
             queue_url=aws_config.sqs_queue_url,

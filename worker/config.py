@@ -426,6 +426,56 @@ class HealthConfig(BaseSettings):
     port: int = Field(default=8085, ge=1, le=65535, description="Port for the /health endpoint")
 
 
+class NotifyConfig(BaseSettings):
+    """GOV.UK Notify email notification configuration.
+
+    Can be overridden via environment variables with GOVUK_NOTIFY_ prefix:
+    - GOVUK_NOTIFY_API_KEY: API key for GOV.UK Notify service
+    - GOVUK_NOTIFY_TEMPLATE_JOB_STARTED: Template ID for job started notification
+    - GOVUK_NOTIFY_TEMPLATE_JOB_COMPLETED: Template ID for job completed notification
+    - GOVUK_NOTIFY_RESULTS_BASE_URL: Base URL for results page links
+
+    Attributes:
+        api_key: GOV.UK Notify API key (required for sending emails)
+        template_job_started: Template ID for the "job started" email
+        template_job_completed: Template ID for the "job completed" email
+        results_base_url: Base URL for constructing results page links
+        enabled: Whether email notifications are enabled (default: True)
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="GOVUK_NOTIFY_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    api_key: str = Field(default="", description="GOV.UK Notify API key")
+    template_job_started: str = Field(
+        default="", description="Template ID for job started notification"
+    )
+    template_job_completed: str = Field(
+        default="", description="Template ID for job completed notification"
+    )
+    results_base_url: str = Field(
+        default="", description="Base URL for results page (e.g., https://yourservice.gov.uk/results)"
+    )
+    enabled: bool = Field(
+        default=True, description="Whether email notifications are enabled"
+    )
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if all required configuration is present."""
+        return bool(
+            self.api_key
+            and self.template_job_started
+            and self.template_job_completed
+            and self.results_base_url
+        )
+
+
 class DebugConfig:
     """Debug output configuration.
 
