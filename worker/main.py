@@ -24,9 +24,9 @@ import uvicorn
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from worker.api import app as api_app
 from worker.aws.sqs import SQSClient
-from worker.config import AWSConfig, DatabaseSettings, HealthConfig, WorkerConfig
-from worker.health import app as health_app
+from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, WorkerConfig
 from worker.orchestrator import JobOrchestrator
 from worker.repositories.engine import create_db_engine
 from worker.repositories.repository import Repository
@@ -76,15 +76,16 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
-def run_health_server(port: int) -> None:
-    """Run the health check server in a separate process.
+def run_api_server(port: int) -> None:
+    """Run the API server in a separate process.
 
     Uses uvicorn as an ASGI server to serve the FastAPI app.
+    The API server provides health check and job submission endpoints.
 
     Args:
-        port: The port to listen on for health check requests.
+        port: The port to listen on for API requests.
     """
-    uvicorn.run(health_app, host="0.0.0.0", port=port, log_level="warning")
+    uvicorn.run(api_app, host="0.0.0.0", port=port, log_level="warning")
 
 
 class SqsConsumer:
@@ -172,12 +173,12 @@ def check_database_connection(
 
 def main():
     """Main entry point for the SQS consumer worker."""
-    health_process = None
+    api_server_process = None
 
     try:
         aws_config = AWSConfig()
         worker_config = WorkerConfig()
-        health_config = HealthConfig()
+        api_config = ApiServerConfig()
         db_settings = DatabaseSettings()
 
         # Check database connectivity early
@@ -185,14 +186,14 @@ def main():
 
         logger.info("Initializing worker components...")
 
-        # Start health server in separate process for CDP ECS health checks
-        health_process = multiprocessing.Process(
-            target=run_health_server,
-            args=(health_config.port,),
+        # Start API server in separate process for health checks and job submission
+        api_server_process = multiprocessing.Process(
+            target=run_api_server,
+            args=(api_config.port,),
             daemon=True,
         )
-        health_process.start()
-        logger.info(f"Health server started on port {health_config.port}")
+        api_server_process.start()
+        logger.info(f"API server started on port {api_config.port}")
 
         # Initialize PostGIS repository (ONCE - reused across jobs)
         # Uses IAM authentication in CDP cloud, static password locally
@@ -226,11 +227,11 @@ def main():
         sys.exit(1)
 
     finally:
-        # Explicit cleanup of health server process
-        if health_process is not None and health_process.is_alive():
-            logger.info("Terminating health server...")
-            health_process.terminate()
-            health_process.join(timeout=5)
+        # Explicit cleanup of API server process
+        if api_server_process is not None and api_server_process.is_alive():
+            logger.info("Terminating API server...")
+            api_server_process.terminate()
+            api_server_process.join(timeout=5)
 
 
 if __name__ == "__main__":

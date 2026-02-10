@@ -406,24 +406,26 @@ class WorkerConfig(BaseSettings):
     )
 
 
-class HealthConfig(BaseSettings):
-    """Health endpoint configuration for CDP ECS health checks.
+class ApiServerConfig(BaseSettings):
+    """Configuration for the HTTP API server.
 
-    Can be overridden via environment variables with HEALTH_ prefix:
-    - HEALTH_PORT (default: 8085)
+    Can be overridden via environment variables with API_ prefix:
+    - API_PORT (default: 8085)
 
-    The health server runs in a separate process to ensure responsiveness
-    during CPU-intensive operations in the main worker process.
+    The API server runs in a separate process to ensure responsiveness
+    during CPU-intensive operations in the main worker process. It provides:
+    - /health - Health check endpoint for CDP ECS monitoring
+    - /job - HTTP job submission endpoint (when enabled)
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="HEALTH_",
+        env_prefix="API_",
         env_file=".env",
         case_sensitive=False,
         extra="ignore",
     )
 
-    port: int = Field(default=8085, ge=1, le=65535, description="Port for the /health endpoint")
+    port: int = Field(default=8085, ge=1, le=65535, description="Port for the API server")
 
 
 class DebugConfig:
@@ -449,3 +451,28 @@ class DebugConfig:
             enabled=os.environ.get("DEBUG_OUTPUT", "false").lower() == "true",
             output_dir=Path(os.environ.get("DEBUG_OUTPUT_DIR", "/tmp/iat-debug")),
         )
+
+
+class JobSubmissionConfig(BaseSettings):
+    """Configuration for HTTP job submission endpoint.
+
+    Can be overridden via environment variables with JOB_SUBMISSION_ prefix:
+    - JOB_SUBMISSION_ENABLED: Enable HTTP job submission (default: false)
+
+    When enabled, the API server exposes a POST /job endpoint that accepts
+    job submissions via HTTP. This provides an alternative to SQS-based
+    job submission for environments where direct HTTP access is preferred.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="JOB_SUBMISSION_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable HTTP job submission endpoint (default: false)",
+    )
