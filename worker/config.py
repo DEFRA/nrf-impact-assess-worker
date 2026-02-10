@@ -411,11 +411,12 @@ class ApiServerConfig(BaseSettings):
 
     Can be overridden via environment variables with API_ prefix:
     - API_PORT (default: 8085)
+    - API_JOB_SUBMISSION_ENABLED: Enable HTTP job submission (default: false)
 
     The API server runs in a separate process to ensure responsiveness
     during CPU-intensive operations in the main worker process. It provides:
     - /health - Health check endpoint for CDP ECS monitoring
-    - /job - HTTP job submission endpoint (when enabled)
+    - /job - HTTP job submission endpoint (when API_JOB_SUBMISSION_ENABLED=true)
     """
 
     model_config = SettingsConfigDict(
@@ -426,6 +427,10 @@ class ApiServerConfig(BaseSettings):
     )
 
     port: int = Field(default=8085, ge=1, le=65535, description="Port for the API server")
+    job_submission_enabled: bool = Field(
+        default=False,
+        description="Enable HTTP job submission endpoint (default: false)",
+    )
 
 
 class DebugConfig:
@@ -453,26 +458,3 @@ class DebugConfig:
         )
 
 
-class JobSubmissionConfig(BaseSettings):
-    """Configuration for HTTP job submission endpoint.
-
-    Can be overridden via environment variables with JOB_SUBMISSION_ prefix:
-    - JOB_SUBMISSION_ENABLED: Enable HTTP job submission (default: false)
-
-    When enabled, the API server exposes a POST /job endpoint that accepts
-    job submissions via HTTP. This provides an alternative to SQS-based
-    job submission for environments where direct HTTP access is preferred.
-    """
-
-    model_config = SettingsConfigDict(
-        env_prefix="JOB_SUBMISSION_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-    enabled: bool = Field(
-        default=False,
-        description="Enable HTTP job submission endpoint (default: false)",
-    )

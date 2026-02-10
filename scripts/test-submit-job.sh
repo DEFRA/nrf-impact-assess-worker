@@ -105,7 +105,7 @@ else
         log_error "Local API server is not running at ${API_URL}"
         echo ""
         echo "Start the worker first:"
-        echo "  export JOB_SUBMISSION_ENABLED=true"
+        echo "  export API_JOB_SUBMISSION_ENABLED=true"
         echo "  uv run python -m worker.main"
         exit 1
     fi
@@ -224,7 +224,7 @@ if [[ "$HTTP_CODE" -eq 200 ]] || [[ "$HTTP_CODE" -eq 201 ]]; then
 elif [[ "$HTTP_CODE" -eq 403 ]]; then
     log_error "Job submission endpoint is disabled"
     echo ""
-    echo "Ensure JOB_SUBMISSION_ENABLED=true is set in the environment"
+    echo "Ensure API_JOB_SUBMISSION_ENABLED=true is set in the environment"
     exit 1
 else
     log_error "Failed to submit job (HTTP $HTTP_CODE)"

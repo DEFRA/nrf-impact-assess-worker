@@ -222,7 +222,7 @@ The script will:
 Local mode is the default. Ensure the worker is running with job submission enabled:
 
 ```bash
-export JOB_SUBMISSION_ENABLED=true
+export API_JOB_SUBMISSION_ENABLED=true
 ./scripts/start_dev_server.sh
 ```
 

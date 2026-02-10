@@ -2,7 +2,7 @@
 
 This module provides a FastAPI application that serves:
 - /health - Health check endpoint required by CDP for ECS monitoring
-- /job - HTTP job submission endpoint (when JOB_SUBMISSION_ENABLED=true)
+- /job - HTTP job submission endpoint (when API_JOB_SUBMISSION_ENABLED=true)
 
 The server runs in a separate process from the main SQS consumer to ensure
 endpoints remain responsive even during CPU-intensive spatial calculations.
@@ -19,7 +19,7 @@ from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
-from worker.config import AWSConfig, JobSubmissionConfig
+from worker.config import ApiServerConfig, AWSConfig
 from worker.models.enums import AssessmentType
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ def submit_job(request: JobSubmissionRequest):
     allowing direct HTTP submission of assessment jobs. It uploads the
     geometry to S3 and queues the job message to SQS for processing.
 
-    Requires JOB_SUBMISSION_ENABLED=true in environment configuration.
+    Requires API_JOB_SUBMISSION_ENABLED=true in environment configuration.
 
     Args:
         request: JobSubmissionRequest containing geometry and job metadata
@@ -95,11 +95,11 @@ def submit_job(request: JobSubmissionRequest):
         HTTPException 403: If job submission endpoint is not enabled
         HTTPException 500: If S3 upload or SQS send fails
     """
-    config = JobSubmissionConfig()
-    if not config.enabled:
+    config = ApiServerConfig()
+    if not config.job_submission_enabled:
         raise HTTPException(
             status_code=403,
-            detail="Job submission endpoint is disabled. Set JOB_SUBMISSION_ENABLED=true to enable.",
+            detail="Job submission endpoint is disabled. Set API_JOB_SUBMISSION_ENABLED=true to enable.",
         )
 
     try:
