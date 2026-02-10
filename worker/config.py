@@ -411,12 +411,12 @@ class ApiServerConfig(BaseSettings):
 
     Can be overridden via environment variables with API_ prefix:
     - API_PORT (default: 8085)
-    - API_JOB_SUBMISSION_ENABLED: Enable HTTP job submission (default: false)
+    - API_TESTING_ENABLED: Enable /test endpoints for development (default: false)
 
     The API server runs in a separate process to ensure responsiveness
     during CPU-intensive operations in the main worker process. It provides:
     - /health - Health check endpoint for CDP ECS monitoring
-    - /job - HTTP job submission endpoint (when API_JOB_SUBMISSION_ENABLED=true)
+    - /test/* - Test endpoints (when API_TESTING_ENABLED=true)
     """
 
     model_config = SettingsConfigDict(
@@ -427,9 +427,9 @@ class ApiServerConfig(BaseSettings):
     )
 
     port: int = Field(default=8085, ge=1, le=65535, description="Port for the API server")
-    job_submission_enabled: bool = Field(
+    testing_enabled: bool = Field(
         default=False,
-        description="Enable HTTP job submission endpoint (default: false)",
+        description="Enable /test endpoints for development (default: false)",
     )
 
 
