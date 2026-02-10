@@ -103,12 +103,16 @@ async def test_submit(
             )
 
         # Upload to S3
+        localstack_creds = {
+            "aws_access_key_id": "test",
+            "aws_secret_access_key": "test",  # noqa: S106
+        }
+
         s3_client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
             region_name=region,
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
+            **localstack_creds,
         )
 
         try:
@@ -132,8 +136,7 @@ async def test_submit(
             "sqs",
             endpoint_url=endpoint_url,
             region_name=region,
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
+            **localstack_creds,
         )
 
         try:
@@ -284,4 +287,5 @@ def _zip_shapefile(shapefile_path: Path, output_path: Path) -> None:
             if component.exists():
                 zipf.write(component, component.name)
             elif ext in (".shp", ".shx", ".dbf"):
-                raise FileNotFoundError(f"Required shapefile component {component} not found")
+                msg = f"Required shapefile component {component} not found"
+                raise FileNotFoundError(msg)

@@ -57,7 +57,8 @@ def test_spatial_difference_with_precision_parallel_fallback(monkeypatch):
     )
 
     def _raise_permission_error(*_args, **_kwargs):
-        raise PermissionError("blocked in test")
+        msg = "blocked in test"
+        raise PermissionError(msg)
 
     monkeypatch.setattr("worker.spatial.overlay.ProcessPoolExecutor", _raise_permission_error)
 
