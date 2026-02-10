@@ -45,7 +45,7 @@ def _get_repository() -> Repository:
 
 
 @router.post("/submit")
-async def test_submit(
+async def submit_job(
     geometry_file: UploadFile,
     assessment_type: str = Form("nutrient"),
     dwelling_type: str = Form("house"),
@@ -156,7 +156,7 @@ async def test_submit(
 
 
 @router.post("/run")
-async def test_run(
+async def run_job(
     geometry_file: UploadFile,
     assessment_type: str = Form("nutrient"),
     dwelling_type: str = Form("house"),
