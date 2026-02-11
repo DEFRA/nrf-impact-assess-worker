@@ -216,6 +216,63 @@ class TestSendJobCompleted:
         assert result is False
 
 
+class TestSendJobFailed:
+    """Tests for send_job_failed method."""
+
+    @patch("worker.services.email.NotificationsAPIClient")
+    def test_sends_email_successfully(self, mock_client_class, sample_job):
+        """Sends job failed email with correct parameters."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = NotifyConfig(
+            api_key="test-api-key-12345678-1234-1234-1234-123456789012-12345678-1234-1234-1234-123456789012",
+            template_job_started="template-started-id",
+            template_job_completed="template-completed-id",
+            template_job_failed="template-failed-id",
+            results_base_url="https://example.gov.uk/results",
+            enabled=True,
+        )
+
+        service = EmailService(config)
+        result = service.send_job_failed(sample_job, "Something went wrong")
+
+        assert result is True
+        mock_client.send_email_notification.assert_called_once_with(
+            email_address="developer@example.com",
+            template_id="template-failed-id",
+            personalisation={
+                "job_id": "test-job-123",
+                "development_name": "Test Development",
+                "assessment_type": "nutrient",
+                "status_link": "https://example.gov.uk/results/test-job-123",
+                "estimateReference": "TEST-JOB",
+                "error_message": "Something went wrong",
+            },
+        )
+
+    def test_returns_false_when_not_configured(self, unconfigured_notify_config, sample_job):
+        """Returns False when service is not configured."""
+        service = EmailService(unconfigured_notify_config)
+
+        result = service.send_job_failed(sample_job, "Error")
+
+        assert result is False
+
+    @patch("worker.services.email.NotificationsAPIClient")
+    def test_returns_false_when_no_failed_template(self, mock_client_class, notify_config, sample_job):
+        """Returns False when no failed template is configured."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        # notify_config fixture doesn't have template_job_failed set
+        service = EmailService(notify_config)
+        result = service.send_job_failed(sample_job, "Error")
+
+        assert result is False
+        mock_client.send_email_notification.assert_not_called()
+
+
 class TestNotifyConfigIsConfigured:
     """Tests for NotifyConfig.is_configured property."""
 

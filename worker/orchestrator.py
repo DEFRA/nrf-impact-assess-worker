@@ -120,6 +120,7 @@ class JobOrchestrator:
 
         except Exception as e:
             logger.exception(f"Job {job.job_id} failed with exception: {e}")
+            self.email_service.send_job_failed(job, str(e))
             return []  # Return empty list on exception
 
     def _process_geometry_file(

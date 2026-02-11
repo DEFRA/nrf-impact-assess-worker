@@ -169,6 +169,64 @@ class EmailService:
             logger.exception(f"Unexpected error sending job completed email for {job_id}: {e}")
             return False
 
+    def send_job_failed(
+        self,
+        job: "ImpactAssessmentJob",
+        error_message: str,
+    ) -> bool:
+        """Send notification that job processing has failed.
+
+        Args:
+            job: The job that failed
+            error_message: Description of what went wrong
+
+        Returns:
+            True if email was sent successfully, False otherwise
+        """
+        if not self._client:
+            logger.debug(f"Skipping job failed email for {job.job_id} - service not configured")
+            return False
+
+        if not self.config.template_job_failed:
+            logger.debug(f"Skipping job failed email for {job.job_id} - no template configured")
+            return False
+
+        if not self.config.is_email_allowed(job.developer_email):
+            logger.info(
+                f"Skipping job failed email for {job.job_id} - "
+                f"email domain not in allowed list: {job.developer_email}"
+            )
+            return False
+
+        try:
+            personalisation = {
+                "job_id": job.job_id,
+                "development_name": job.development_name or "Unnamed development",
+                "assessment_type": job.assessment_type.value,
+                "status_link": self._build_status_link(job.job_id),
+                "estimateReference": job.job_id[:8].upper(),
+                "error_message": error_message,
+            }
+
+            self._client.send_email_notification(
+                email_address=job.developer_email,
+                template_id=self.config.template_job_failed,
+                personalisation=personalisation,
+            )
+
+            logger.info(f"Job failed email sent for job {job.job_id} to {job.developer_email}")
+            return True
+
+        except HTTPError as e:
+            logger.error(
+                f"Failed to send job failed email for {job.job_id}: "
+                f"status={e.status_code}, message={e.message}"
+            )
+            return False
+        except Exception as e:
+            logger.exception(f"Unexpected error sending job failed email for {job.job_id}: {e}")
+            return False
+
     def send_email(
         self,
         job_id: str,
