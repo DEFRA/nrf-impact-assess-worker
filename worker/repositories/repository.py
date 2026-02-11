@@ -5,6 +5,7 @@ tables stored in PostGIS using SQLAlchemy 2.x query builder patterns.
 """
 
 import logging
+import time
 from typing import Any
 
 import geopandas as gpd
@@ -202,11 +203,12 @@ class Repository:
         input_id_col: str,
         assignments: list[dict[str, Any]],
     ) -> dict[str, pd.DataFrame]:
-        """Perform multiple majority overlap assignments in a single DB session.
+        """Perform multiple majority overlap assignments in a single SQL query.
 
-        Creates the temporary table and spatial index once, then runs each
-        LATERAL join query against it. Saves 2 temp-table creation/index cycles
-        compared to calling majority_overlap_postgis() 3 times.
+        Creates a temporary table with a GIST index, then executes a single
+        combined query with one LATERAL subquery per assignment. This avoids
+        the overhead of 3 separate query round-trips and lets PostgreSQL
+        optimise the shared scan of the temp table.
 
         Args:
             input_gdf: Input features with geometry
@@ -227,9 +229,9 @@ class Repository:
                 for a in assignments
             }
 
-        results = {}
-
         with self.session() as session:
+            t0 = time.perf_counter()
+
             # 1. Create temp table ONCE
             session.execute(text(
                 "CREATE TEMPORARY TABLE _tmp_input_geom ("
@@ -253,18 +255,30 @@ class Repository:
                 insert_values,
             )
 
-            # 3. Build spatial index ONCE
+            # 3. Build spatial index + ANALYZE for optimal query planning
             session.execute(text(
                 "CREATE INDEX ON _tmp_input_geom USING GIST (geom)"
             ))
+            session.execute(text("ANALYZE _tmp_input_geom"))
 
-            # 4. Run each LATERAL query against the shared temp table
-            for assignment in assignments:
+            t_setup = time.perf_counter() - t0
+            logger.info(
+                f"[timing] batch_majority_overlap: temp table setup "
+                f"({len(input_gdf)} features): {t_setup:.3f}s"
+            )
+
+            # 4. Build a single combined query with one LATERAL per assignment
+            t_query = time.perf_counter()
+
+            select_cols = ["i.input_id"]
+            lateral_clauses = []
+
+            for idx, assignment in enumerate(assignments):
                 overlay_table = assignment["overlay_table"]
                 overlay_filter = assignment["overlay_filter"]
                 overlay_attr_col = assignment["overlay_attr_col"]
                 output_field = assignment["output_field"]
-                default_value = assignment.get("default_value")
+                alias = f"lat_{idx}"
 
                 if isinstance(overlay_attr_col, str):
                     overlay_attr = getattr(overlay_table, overlay_attr_col)
@@ -288,26 +302,46 @@ class Repository:
                 filter_sql = filter_str.replace(f"{qualified}.", "t.")
                 attr_sql = attr_str.replace(f"{qualified}.", "t.")
 
-                raw_sql = text(f"""
-                    SELECT i.input_id, best.attr_val
-                    FROM _tmp_input_geom i
-                    LEFT JOIN LATERAL (
-                        SELECT {attr_sql} AS attr_val
-                        FROM {qualified} t
-                        WHERE {filter_sql}
-                          AND ST_Intersects(t.geometry, i.geom)
-                        ORDER BY ST_Area(ST_Intersection(t.geometry, i.geom)) DESC
-                        LIMIT 1
-                    ) best ON true
-                """)
+                lateral_clauses.append(
+                    f"LEFT JOIN LATERAL ("
+                    f"  SELECT {attr_sql} AS attr_val"
+                    f"  FROM {qualified} t"
+                    f"  WHERE {filter_sql}"
+                    f"    AND ST_Intersects(t.geometry, i.geom)"
+                    f"  ORDER BY ST_Area(ST_Intersection(t.geometry, i.geom)) DESC"
+                    f"  LIMIT 1"
+                    f") {alias} ON true"
+                )
+                select_cols.append(f"{alias}.attr_val AS {output_field}")
 
-                rows = session.execute(raw_sql).fetchall()
-                df = pd.DataFrame(rows, columns=[input_id_col, output_field])
+            combined_sql = text(
+                f"SELECT {', '.join(select_cols)} "
+                f"FROM _tmp_input_geom i "
+                + " ".join(lateral_clauses)
+            )
 
-                if default_value is not None:
-                    df[output_field] = df[output_field].fillna(default_value)
+            rows = session.execute(combined_sql).fetchall()
 
-                results[output_field] = df
+            logger.info(
+                f"[timing] batch_majority_overlap: combined query "
+                f"({len(assignments)} laterals): {time.perf_counter() - t_query:.3f}s"
+            )
+
+        # Build result DataFrames
+        output_fields = [a["output_field"] for a in assignments]
+        all_columns = [input_id_col, *output_fields]
+        combined_df = pd.DataFrame(rows, columns=all_columns)
+
+        # Apply defaults and split into per-assignment DataFrames
+        results = {}
+        for assignment in assignments:
+            output_field = assignment["output_field"]
+            default_value = assignment.get("default_value")
+
+            df = combined_df[[input_id_col, output_field]].copy()
+            if default_value is not None:
+                df[output_field] = df[output_field].fillna(default_value)
+            results[output_field] = df
 
         return results
 
@@ -380,10 +414,11 @@ class Repository:
                 insert_values,
             )
 
-            # 3. Build spatial index on temp table
+            # 3. Build spatial index on temp table + ANALYZE
             session.execute(text(
                 "CREATE INDEX ON _tmp_rlb USING GIST (geom)"
             ))
+            session.execute(text("ANALYZE _tmp_rlb"))
 
             # 4. 3-way intersection query — use subquery to compute
             #    ST_Intersection once, then filter and calculate area from it

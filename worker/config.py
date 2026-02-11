@@ -406,24 +406,31 @@ class WorkerConfig(BaseSettings):
     )
 
 
-class HealthConfig(BaseSettings):
-    """Health endpoint configuration for CDP ECS health checks.
+class ApiServerConfig(BaseSettings):
+    """Configuration for the HTTP API server.
 
-    Can be overridden via environment variables with HEALTH_ prefix:
-    - HEALTH_PORT (default: 8085)
+    Can be overridden via environment variables with API_ prefix:
+    - API_PORT (default: 8085)
+    - API_TESTING_ENABLED: Enable /test endpoints for development (default: false)
 
-    The health server runs in a separate process to ensure responsiveness
-    during CPU-intensive operations in the main worker process.
+    The API server runs in a separate process to ensure responsiveness
+    during CPU-intensive operations in the main worker process. It provides:
+    - /health - Health check endpoint for CDP ECS monitoring
+    - /test/* - Test endpoints (when API_TESTING_ENABLED=true)
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="HEALTH_",
+        env_prefix="API_",
         env_file=".env",
         case_sensitive=False,
         extra="ignore",
     )
 
-    port: int = Field(default=8085, ge=1, le=65535, description="Port for the /health endpoint")
+    port: int = Field(default=8085, ge=1, le=65535, description="Port for the API server")
+    testing_enabled: bool = Field(
+        default=False,
+        description="Enable /test endpoints for development (default: false)",
+    )
 
 
 class NotifyConfig(BaseSettings):
@@ -499,3 +506,5 @@ class DebugConfig:
             enabled=os.environ.get("DEBUG_OUTPUT", "false").lower() == "true",
             output_dir=Path(os.environ.get("DEBUG_OUTPUT_DIR", "/tmp/iat-debug")),
         )
+
+
