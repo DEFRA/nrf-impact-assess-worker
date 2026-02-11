@@ -249,6 +249,15 @@ export CDP_API_KEY='your-api-key'
 
 **Note:** The API key can be generated and obtained from your CDP developer account profile page.
 
+**Tip:** To avoid exporting the key each session, store it in `scripts/.env.local` (gitignored):
+
+```bash
+# scripts/.env.local
+CDP_API_KEY=your-api-key
+```
+
+The script will automatically load this file if present.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CDP_API_KEY` | (required) | API key for CDP environment |
