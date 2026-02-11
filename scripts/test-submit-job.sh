@@ -16,6 +16,7 @@
 #
 #   Cloud mode (--cloud):
 #     CDP_API_KEY     - API key for CDP environment (required)
+#                       Can be set in scripts/.env.local (gitignored)
 #     CDP_BASE_URL    - Base URL (default: ephemeral-protected.api.dev.cdp-int.defra.cloud)
 #     CDP_SERVICE     - Service name (default: nrf-impact-assess-worker)
 #
@@ -28,6 +29,14 @@
 # =============================================================================
 
 set -e  # Exit on error
+
+# Source .env.local file if it exists (for secrets like CDP_API_KEY)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env.local" ]]; then
+    set -a  # Auto-export variables
+    source "$SCRIPT_DIR/.env.local"
+    set +a
+fi
 
 # Colors for output
 RED='\033[0;31m'

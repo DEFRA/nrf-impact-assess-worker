@@ -1,4 +1,4 @@
-"""Test endpoints for local development.
+"""Test endpoints. 
 
 Requires API_TESTING_ENABLED=true to be included in the API.
 

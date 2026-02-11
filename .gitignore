@@ -196,6 +196,7 @@ cython_debug/
 .cursorindexingignore
 
 compose/secrets.env
+scripts/.env.local
 
 coverage*
 
