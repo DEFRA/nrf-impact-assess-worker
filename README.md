@@ -5,13 +5,23 @@ This is work-in-progress. See [To Do List](./TODO.md)
 - [nrf-impact-assess-worker](#nrf-impact-assess-worker)
   - [Requirements](#requirements)
     - [Python](#python)
+    - [Environment Variable Configuration](#environment-variable-configuration)
     - [Linting and Formatting](#linting-and-formatting)
+      - [Running Ruff](#running-ruff)
+      - [Pre-commit Hooks](#pre-commit-hooks)
+      - [VS Code Configuration](#vs-code-configuration)
+      - [Ruff Configuration](#ruff-configuration)
     - [Docker](#docker)
   - [Local development](#local-development)
-    - [Setup & Configuration](#setup--configuration)
+    - [Setup \& Configuration](#setup--configuration)
     - [Development](#development)
+      - [Using Docker Compose](#using-docker-compose)
+      - [Using the provided script](#using-the-provided-script)
     - [Testing](#testing)
-    - [Production Mode](#production-mode)
+  - [Submitting Test Jobs](#submitting-test-jobs)
+    - [Local Mode](#local-mode)
+    - [CDP Cloud Mode](#cdp-cloud-mode)
+    - [Job Parameters](#job-parameters)
   - [API endpoints](#api-endpoints)
   - [Custom Cloudwatch Metrics](#custom-cloudwatch-metrics)
   - [Pipelines](#pipelines)
@@ -188,6 +198,84 @@ To test the application run:
 
 ```bash
 uv run pytest
+```
+
+## Submitting Test Jobs
+
+A script is provided to submit test jobs to either local development or CDP cloud environments.
+
+```bash
+./scripts/test-submit-job.sh                          # Local, default shapefile
+./scripts/test-submit-job.sh --cloud                  # CDP cloud, default shapefile
+./scripts/test-submit-job.sh path/to/file.shp         # Local, custom shapefile
+./scripts/test-submit-job.sh --cloud path/to/file.shp # CDP cloud, custom shapefile
+```
+
+The script will:
+1. Convert the shapefile to GeoJSON
+2. Build the request payload with job parameters
+3. POST to the appropriate endpoint
+4. Display the response including the `job_id`
+
+### Local Mode
+
+Local mode is the default. Ensure the worker is running with job submission enabled:
+
+```bash
+export API_TESTING_ENABLED=true
+./scripts/start_dev_server.sh
+```
+
+Then submit a job:
+
+```bash
+./scripts/test-submit-job.sh
+```
+
+You can override the local API URL if needed:
+
+```bash
+API_URL=http://localhost:9000 ./scripts/test-submit-job.sh
+```
+
+### CDP Cloud Mode
+
+To submit jobs to the CDP cloud environment, use the `--cloud` flag and set your API key:
+
+```bash
+export CDP_API_KEY='your-api-key'
+./scripts/test-submit-job.sh --cloud
+```
+
+**Note:** The API key can be generated and obtained from your CDP developer account profile page.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CDP_API_KEY` | (required) | API key for CDP environment |
+| `CDP_BASE_URL` | `ephemeral-protected.api.dev.cdp-int.defra.cloud` | CDP API base URL |
+| `CDP_SERVICE` | `nrf-impact-assess-worker` | Service name |
+
+### Job Parameters
+
+You can customise the job parameters using environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOB_EMAIL` | `test@example.com` | Developer email address |
+| `JOB_DWELLING_TYPE` | `house` | Dwelling type |
+| `JOB_DWELLINGS` | `1` | Number of dwellings |
+| `JOB_DEV_NAME` | `Test Development` | Development name |
+| `JOB_ASSESSMENT_TYPE` | `nutrient` | Assessment type: `nutrient` or `gcn` |
+
+Example with custom parameters:
+
+```bash
+export CDP_API_KEY='your-api-key'
+export JOB_EMAIL='developer@example.com'
+export JOB_ASSESSMENT_TYPE='gcn'
+export JOB_DWELLINGS=5
+
+./scripts/test-submit-job.sh --cloud
 ```
 
 ## API endpoints
