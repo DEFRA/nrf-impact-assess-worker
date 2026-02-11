@@ -80,6 +80,7 @@ class EmailService:
                 "development_name": job.development_name or "Unnamed development",
                 "assessment_type": job.assessment_type.value,
                 "status_link": self._build_status_link(job.job_id),
+                "estimateReference": job.job_id[:8].upper(),
             }
 
             self._client.send_email_notification(
@@ -108,7 +109,7 @@ class EmailService:
         assessment_type: str,
         development_name: str = "",
         assessment_results: list | None = None,  # noqa: ARG002 - reserved for future template use
-        financial_data: dict | None = None,  # noqa: ARG002 - reserved for future template use
+        financial_data: dict | None = None,
     ) -> bool:
         """Send notification that job processing has completed.
 
@@ -118,7 +119,7 @@ class EmailService:
             assessment_type: Type of assessment (e.g., "nutrient", "gcn")
             development_name: Name of the development
             assessment_results: List of assessment results (for future template use)
-            financial_data: Financial calculation results (for future template use)
+            financial_data: Financial calculation results with levy breakdown
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -135,11 +136,18 @@ class EmailService:
             return False
 
         try:
+            # Extract financial data with defaults
+            fin = financial_data or {}
             personalisation = {
                 "job_id": job_id,
                 "development_name": development_name or "Unnamed development",
                 "assessment_type": assessment_type,
                 "results_link": self._build_status_link(job_id),
+                "estimateReference": fin.get("estimateReference", job_id[:8].upper()),
+                "levyAmount": fin.get("levyAmount", "Not calculated"),
+                "monitoringAmount": fin.get("monitoringAmount", "Not calculated"),
+                "maintenanceAmount": fin.get("maintenanceAmount", "Not calculated"),
+                "adminAmount": fin.get("adminAmount", "Not calculated"),
             }
 
             self._client.send_email_notification(

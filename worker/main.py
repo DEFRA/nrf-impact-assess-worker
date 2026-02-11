@@ -195,6 +195,10 @@ def main():
         )
         api_server_process.start()
         logger.info(f"API server started on port {api_config.port}")
+        if api_config.testing_enabled:
+            logger.info("API_TESTING_ENABLED=true: test endpoints enabled at /test/*")
+        else:
+            logger.info("API_TESTING_ENABLED=false: test endpoints disabled")
 
         # Initialize PostGIS repository (ONCE - reused across jobs)
         # Uses IAM authentication in CDP cloud, static password locally
