@@ -134,6 +134,7 @@ class TestSendJobStarted:
                 "development_name": "Test Development",
                 "assessment_type": "nutrient",
                 "status_link": "https://example.gov.uk/results/test-job-123",
+                "estimateReference": "TEST-JOB",
             },
         )
 
@@ -194,6 +195,11 @@ class TestSendJobCompleted:
                 "development_name": "Test Development",
                 "assessment_type": "nutrient",
                 "results_link": "https://example.gov.uk/results/test-job-123",
+                "estimateReference": "TEST-JOB",
+                "levyAmount": "Not calculated",
+                "monitoringAmount": "Not calculated",
+                "maintenanceAmount": "Not calculated",
+                "adminAmount": "Not calculated",
             },
         )
 
