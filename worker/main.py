@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from worker.api import app as api_app
 from worker.aws.sqs import SQSClient
-from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, WorkerConfig
+from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, NotifyConfig, WorkerConfig
 from worker.orchestrator import JobOrchestrator
 from worker.repositories.engine import create_db_engine
 from worker.repositories.repository import Repository

@@ -246,3 +246,100 @@ class TestNotifyConfigIsConfigured:
             results_base_url="",
         )
         assert config.is_configured is False
+
+
+class TestNotifyConfigAllowedDomains:
+    """Tests for NotifyConfig.is_email_allowed method."""
+
+    def test_allows_all_when_no_restriction(self):
+        """Allows all emails when allowed_domains is empty."""
+        config = NotifyConfig(allowed_domains="")
+        assert config.is_email_allowed("user@example.com") is True
+        assert config.is_email_allowed("user@anything.org") is True
+
+    def test_allows_matching_domain(self):
+        """Allows emails from domains in the allowed list."""
+        config = NotifyConfig(allowed_domains="example.com,test.org")
+        assert config.is_email_allowed("user@example.com") is True
+        assert config.is_email_allowed("user@test.org") is True
+
+    def test_blocks_non_matching_domain(self):
+        """Blocks emails from domains not in the allowed list."""
+        config = NotifyConfig(allowed_domains="example.com,test.org")
+        assert config.is_email_allowed("user@blocked.com") is False
+        assert config.is_email_allowed("user@other.net") is False
+
+    def test_handles_whitespace_in_domains(self):
+        """Handles whitespace around domain names."""
+        config = NotifyConfig(allowed_domains="  example.com , test.org  ")
+        assert config.is_email_allowed("user@example.com") is True
+        assert config.is_email_allowed("user@test.org") is True
+
+    def test_case_insensitive_matching(self):
+        """Domain matching is case insensitive."""
+        config = NotifyConfig(allowed_domains="Example.COM")
+        assert config.is_email_allowed("user@example.com") is True
+        assert config.is_email_allowed("user@EXAMPLE.COM") is True
+
+    def test_single_domain(self):
+        """Works with a single domain."""
+        config = NotifyConfig(allowed_domains="equalexperts.com")
+        assert config.is_email_allowed("dev@equalexperts.com") is True
+        assert config.is_email_allowed("user@other.com") is False
+
+
+class TestEmailServiceDomainRestriction:
+    """Tests for email domain restriction in EmailService."""
+
+    @patch("worker.services.email.NotificationsAPIClient")
+    def test_send_job_started_blocked_by_domain(self, mock_client_class):
+        """send_job_started returns False for blocked domain."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = NotifyConfig(
+            api_key="test-key",
+            template_job_started="t1",
+            template_job_completed="t2",
+            results_base_url="https://example.com",
+            allowed_domains="allowed.com",
+        )
+        job = ImpactAssessmentJob(
+            job_id="test-job-123",
+            s3_input_key="jobs/test/input.zip",
+            developer_email="user@blocked.com",
+            development_name="Test",
+            dwelling_type="house",
+            number_of_dwellings=1,
+            assessment_type=AssessmentType.NUTRIENT,
+        )
+
+        service = EmailService(config)
+        result = service.send_job_started(job)
+
+        assert result is False
+        mock_client.send_email_notification.assert_not_called()
+
+    @patch("worker.services.email.NotificationsAPIClient")
+    def test_send_job_completed_blocked_by_domain(self, mock_client_class):
+        """send_job_completed returns False for blocked domain."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = NotifyConfig(
+            api_key="test-key",
+            template_job_started="t1",
+            template_job_completed="t2",
+            results_base_url="https://example.com",
+            allowed_domains="allowed.com",
+        )
+
+        service = EmailService(config)
+        result = service.send_job_completed(
+            job_id="test-123",
+            developer_email="user@blocked.com",
+            assessment_type="nutrient",
+        )
+
+        assert result is False
+        mock_client.send_email_notification.assert_not_called()

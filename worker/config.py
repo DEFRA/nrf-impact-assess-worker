@@ -441,6 +441,7 @@ class NotifyConfig(BaseSettings):
     - GOVUK_NOTIFY_TEMPLATE_JOB_STARTED: Template ID for job started notification
     - GOVUK_NOTIFY_TEMPLATE_JOB_COMPLETED: Template ID for job completed notification
     - GOVUK_NOTIFY_RESULTS_BASE_URL: Base URL for results page links
+    - GOVUK_NOTIFY_ALLOWED_DOMAINS: Comma-separated list of allowed email domains (optional)
 
     Attributes:
         api_key: GOV.UK Notify API key (required for sending emails)
@@ -448,6 +449,7 @@ class NotifyConfig(BaseSettings):
         template_job_completed: Template ID for the "job completed" email
         results_base_url: Base URL for constructing results page links
         enabled: Whether email notifications are enabled (default: True)
+        allowed_domains: Comma-separated list of allowed email domains (empty = all allowed)
     """
 
     model_config = SettingsConfigDict(
@@ -471,6 +473,10 @@ class NotifyConfig(BaseSettings):
     enabled: bool = Field(
         default=True, description="Whether email notifications are enabled"
     )
+    allowed_domains: str = Field(
+        default="",
+        description="Comma-separated list of allowed email domains (empty = all allowed)",
+    )
 
     @property
     def is_configured(self) -> bool:
@@ -481,6 +487,25 @@ class NotifyConfig(BaseSettings):
             and self.template_job_completed
             and self.results_base_url
         )
+
+    def is_email_allowed(self, email: str) -> bool:
+        """Check if an email address is allowed based on domain restrictions.
+
+        Args:
+            email: Email address to check
+
+        Returns:
+            True if email is allowed (domain matches or no restrictions), False otherwise
+        """
+        if not self.allowed_domains:
+            return True
+
+        allowed = [d.strip().lower() for d in self.allowed_domains.split(",") if d.strip()]
+        if not allowed:
+            return True
+
+        email_domain = email.lower().split("@")[-1]
+        return email_domain in allowed
 
 
 class DebugConfig:

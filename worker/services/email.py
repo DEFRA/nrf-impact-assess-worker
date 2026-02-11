@@ -67,6 +67,13 @@ class EmailService:
             logger.debug(f"Skipping job started email for {job.job_id} - service not configured")
             return False
 
+        if not self.config.is_email_allowed(job.developer_email):
+            logger.info(
+                f"Skipping job started email for {job.job_id} - "
+                f"email domain not in allowed list: {job.developer_email}"
+            )
+            return False
+
         try:
             personalisation = {
                 "job_id": job.job_id,
@@ -118,6 +125,13 @@ class EmailService:
         """
         if not self._client:
             logger.debug(f"Skipping job completed email for {job_id} - service not configured")
+            return False
+
+        if not self.config.is_email_allowed(developer_email):
+            logger.info(
+                f"Skipping job completed email for {job_id} - "
+                f"email domain not in allowed list: {developer_email}"
+            )
             return False
 
         try:
