@@ -1,4 +1,4 @@
-"""Test endpoints. 
+"""Test endpoints.
 
 Requires API_TESTING_ENABLED=true to be included in the API.
 
