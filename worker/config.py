@@ -441,6 +441,7 @@ class NotifyConfig(BaseSettings):
     - GOVUK_NOTIFY_TEMPLATE_JOB_STARTED: Template ID for job started notification
     - GOVUK_NOTIFY_TEMPLATE_JOB_COMPLETED: Template ID for job completed notification
     - GOVUK_NOTIFY_TEMPLATE_JOB_FAILED: Template ID for job failed notification
+    - GOVUK_NOTIFY_SUPPORT_EMAIL: Email address for job failure notifications (optional)
     - GOVUK_NOTIFY_RESULTS_BASE_URL: Base URL for results page links
     - GOVUK_NOTIFY_ALLOWED_DOMAINS: Comma-separated list of allowed email domains (optional)
 
@@ -449,6 +450,7 @@ class NotifyConfig(BaseSettings):
         template_job_started: Template ID for the "job started" email
         template_job_completed: Template ID for the "job completed" email
         template_job_failed: Template ID for the "job failed" email
+        support_email: Email address for job failure notifications (empty = disabled)
         results_base_url: Base URL for constructing results page links
         enabled: Whether email notifications are enabled (default: True)
         allowed_domains: Comma-separated list of allowed email domains (empty = all allowed)
@@ -471,6 +473,10 @@ class NotifyConfig(BaseSettings):
     )
     template_job_failed: str = Field(
         default="", description="Template ID for job failed notification"
+    )
+    support_email: str = Field(
+        default="",
+        description="Email address for job failure notifications (empty = disabled)",
     )
     results_base_url: str = Field(
         default="", description="Base URL for results page (e.g., https://yourservice.gov.uk/results)"

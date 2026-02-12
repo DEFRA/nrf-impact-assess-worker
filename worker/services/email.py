@@ -176,6 +176,10 @@ class EmailService:
     ) -> bool:
         """Send notification that job processing has failed.
 
+        Sends to the configured support email address (for support engineers),
+        not to the developer who submitted the job. If no support email is
+        configured, the notification is skipped.
+
         Args:
             job: The job that failed
             error_message: Description of what went wrong
@@ -191,11 +195,8 @@ class EmailService:
             logger.debug(f"Skipping job failed email for {job.job_id} - no template configured")
             return False
 
-        if not self.config.is_email_allowed(job.developer_email):
-            logger.info(
-                f"Skipping job failed email for {job.job_id} - "
-                f"email domain not in allowed list: {job.developer_email}"
-            )
+        if not self.config.support_email:
+            logger.debug(f"Skipping job failed email for {job.job_id} - no support email configured")
             return False
 
         try:
@@ -209,12 +210,12 @@ class EmailService:
             }
 
             self._client.send_email_notification(
-                email_address=job.developer_email,
+                email_address=self.config.support_email,
                 template_id=self.config.template_job_failed,
                 personalisation=personalisation,
             )
 
-            logger.info(f"Job failed email sent for job {job.job_id} to {job.developer_email}")
+            logger.info(f"Job failed email sent for job {job.job_id} to {self.config.support_email}")
             return True
 
         except HTTPError as e:

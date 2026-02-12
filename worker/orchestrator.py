@@ -68,9 +68,6 @@ class JobOrchestrator:
         start_time = time.time()
         logger.info(f"Processing job {job.job_id} for assessment type: {assessment_type.value}")
 
-        # Send job started notification
-        self.email_service.send_job_started(job)
-
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir_path = Path(tmpdir)

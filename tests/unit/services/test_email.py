@@ -220,8 +220,8 @@ class TestSendJobFailed:
     """Tests for send_job_failed method."""
 
     @patch("worker.services.email.NotificationsAPIClient")
-    def test_sends_email_successfully(self, mock_client_class, sample_job):
-        """Sends job failed email with correct parameters."""
+    def test_sends_email_to_support_address(self, mock_client_class, sample_job):
+        """Sends job failed email to support address, not developer."""
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
@@ -230,6 +230,7 @@ class TestSendJobFailed:
             template_job_started="template-started-id",
             template_job_completed="template-completed-id",
             template_job_failed="template-failed-id",
+            support_email="support@example.gov.uk",
             results_base_url="https://example.gov.uk/results",
             enabled=True,
         )
@@ -239,7 +240,7 @@ class TestSendJobFailed:
 
         assert result is True
         mock_client.send_email_notification.assert_called_once_with(
-            email_address="developer@example.com",
+            email_address="support@example.gov.uk",
             template_id="template-failed-id",
             personalisation={
                 "job_id": "test-job-123",
@@ -267,6 +268,28 @@ class TestSendJobFailed:
 
         # notify_config fixture doesn't have template_job_failed set
         service = EmailService(notify_config)
+        result = service.send_job_failed(sample_job, "Error")
+
+        assert result is False
+        mock_client.send_email_notification.assert_not_called()
+
+    @patch("worker.services.email.NotificationsAPIClient")
+    def test_returns_false_when_no_support_email(self, mock_client_class, sample_job):
+        """Returns False when no support email is configured."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = NotifyConfig(
+            api_key="test-api-key-12345678-1234-1234-1234-123456789012-12345678-1234-1234-1234-123456789012",
+            template_job_started="template-started-id",
+            template_job_completed="template-completed-id",
+            template_job_failed="template-failed-id",
+            support_email="",  # Empty - disabled
+            results_base_url="https://example.gov.uk/results",
+            enabled=True,
+        )
+
+        service = EmailService(config)
         result = service.send_job_failed(sample_job, "Error")
 
         assert result is False
