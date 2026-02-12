@@ -100,16 +100,15 @@ class JobOrchestrator:
                     financial_result = None
                     logger.info("FinancialCalculationService.calculate() is not yet implemented.")
 
-                logger.info("Step 6: Sending completion email (stub)")
-                try:
-                    self.email_service.send_email(
-                        job_id=job.job_id,
-                        developer_email=job.developer_email,
-                        assessment_results=assessment_results,
-                        financial_data=financial_result,
-                    )
-                except NotImplementedError:
-                    logger.info("EmailService.send_email() is not yet implemented.")
+                logger.info("Step 6: Sending completion email")
+                self.email_service.send_job_completed(
+                    job_id=job.job_id,
+                    developer_email=job.developer_email,
+                    assessment_type=assessment_type.value,
+                    development_name=job.development_name,
+                    assessment_results=assessment_results,
+                    financial_data=financial_result,
+                )
 
                 processing_time = time.time() - start_time
                 logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
@@ -118,6 +117,7 @@ class JobOrchestrator:
 
         except Exception as e:
             logger.exception(f"Job {job.job_id} failed with exception: {e}")
+            self.email_service.send_job_failed(job, str(e))
             return []  # Return empty list on exception
 
     def _process_geometry_file(

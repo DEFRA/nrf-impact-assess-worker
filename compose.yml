@@ -54,6 +54,8 @@ services:
         condition: service_healthy
     env_file:
       - "compose/aws.env"
+      - path: "compose/secrets.env"
+        required: false
     deploy:
       resources:
         limits:

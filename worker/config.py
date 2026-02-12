@@ -433,6 +433,92 @@ class ApiServerConfig(BaseSettings):
     )
 
 
+class NotifyConfig(BaseSettings):
+    """GOV.UK Notify email notification configuration.
+
+    Can be overridden via environment variables with GOVUK_NOTIFY_ prefix:
+    - GOVUK_NOTIFY_API_KEY: API key for GOV.UK Notify service
+    - GOVUK_NOTIFY_TEMPLATE_JOB_STARTED: Template ID for job started notification
+    - GOVUK_NOTIFY_TEMPLATE_JOB_COMPLETED: Template ID for job completed notification
+    - GOVUK_NOTIFY_TEMPLATE_JOB_FAILED: Template ID for job failed notification
+    - GOVUK_NOTIFY_SUPPORT_EMAIL: Email address for job failure notifications (optional)
+    - GOVUK_NOTIFY_RESULTS_BASE_URL: Base URL for results page links
+    - GOVUK_NOTIFY_ALLOWED_DOMAINS: Comma-separated list of allowed email domains (optional)
+
+    Attributes:
+        api_key: GOV.UK Notify API key (required for sending emails)
+        template_job_started: Template ID for the "job started" email
+        template_job_completed: Template ID for the "job completed" email
+        template_job_failed: Template ID for the "job failed" email
+        support_email: Email address for job failure notifications (empty = disabled)
+        results_base_url: Base URL for constructing results page links
+        enabled: Whether email notifications are enabled (default: True)
+        allowed_domains: Comma-separated list of allowed email domains (empty = all allowed)
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="GOVUK_NOTIFY_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    api_key: str = Field(default="", description="GOV.UK Notify API key")
+    template_job_started: str = Field(
+        default="", description="Template ID for job started notification"
+    )
+    template_job_completed: str = Field(
+        default="", description="Template ID for job completed notification"
+    )
+    template_job_failed: str = Field(
+        default="", description="Template ID for job failed notification"
+    )
+    support_email: str = Field(
+        default="",
+        description="Email address for job failure notifications (empty = disabled)",
+    )
+    results_base_url: str = Field(
+        default="", description="Base URL for results page (e.g., https://yourservice.gov.uk/results)"
+    )
+    enabled: bool = Field(
+        default=True, description="Whether email notifications are enabled"
+    )
+    allowed_domains: str = Field(
+        default="",
+        description="Comma-separated list of allowed email domains (empty = all allowed)",
+    )
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if all required configuration is present."""
+        return bool(
+            self.api_key
+            and self.template_job_started
+            and self.template_job_completed
+            and self.results_base_url
+        )
+
+    def is_email_allowed(self, email: str) -> bool:
+        """Check if an email address is allowed based on domain restrictions.
+
+        Args:
+            email: Email address to check
+
+        Returns:
+            True if email is allowed (domain matches or no restrictions), False otherwise
+        """
+        if not self.allowed_domains:
+            return True
+
+        allowed = [d.strip().lower() for d in self.allowed_domains.split(",") if d.strip()]
+        if not allowed:
+            return True
+
+        email_domain = email.lower().split("@")[-1]
+        return email_domain in allowed
+
+
 class DebugConfig:
     """Debug output configuration.
 

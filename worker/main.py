@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from worker.api import app as api_app
 from worker.aws.sqs import SQSClient
-from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, WorkerConfig
+from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, NotifyConfig, WorkerConfig
 from worker.orchestrator import JobOrchestrator
 from worker.repositories.engine import create_db_engine
 from worker.repositories.repository import Repository
@@ -180,6 +180,7 @@ def main():
         worker_config = WorkerConfig()
         api_config = ApiServerConfig()
         db_settings = DatabaseSettings()
+        notify_config = NotifyConfig()
 
         # Check database connectivity early
         check_database_connection(db_settings, aws_config)
@@ -194,6 +195,10 @@ def main():
         )
         api_server_process.start()
         logger.info(f"API server started on port {api_config.port}")
+        if api_config.testing_enabled:
+            logger.info("API_TESTING_ENABLED=true: test endpoints enabled at /test/*")
+        else:
+            logger.info("API_TESTING_ENABLED=false: test endpoints disabled")
 
         # Initialize PostGIS repository (ONCE - reused across jobs)
         # Uses IAM authentication in CDP cloud, static password locally
@@ -201,7 +206,7 @@ def main():
         repository = Repository(engine)
 
         financial_service = FinancialCalculationService()
-        email_service = EmailService()
+        email_service = EmailService(notify_config)
 
         sqs_client = SQSClient(
             queue_url=aws_config.sqs_queue_url,
