@@ -7,40 +7,10 @@ Provides filters that enhance log records with CDP-specific fields:
 """
 
 import logging
-import os
 
 from worker.common.tracing import ctx_request, ctx_response, ctx_trace_id
 
 logger = logging.getLogger(__name__)
-
-
-def log_proxy_settings() -> None:
-    """Log proxy-related environment variables for debugging connectivity issues."""
-    proxy_vars = [
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "NO_PROXY",
-        "no_proxy",
-        "ALL_PROXY",
-        "all_proxy",
-    ]
-
-    found_any = False
-    for var in proxy_vars:
-        value = os.environ.get(var)
-        if value:
-            found_any = True
-            # Mask credentials if present in proxy URL (user:pass@host)
-            if "@" in value:
-                masked = value.split("@")[-1]
-                logger.info(f"Proxy env var {var}=***@{masked}")
-            else:
-                logger.info(f"Proxy env var {var}={value}")
-
-    if not found_any:
-        logger.info("No proxy environment variables detected")
 
 
 class ExtraFieldsFilter(logging.Filter):
