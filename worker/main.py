@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from worker.api import app as api_app
 from worker.aws.sqs import SQSClient
-from worker.common.log_utils import log_proxy_settings
+from worker.common.proxy_utils import configure_proxy_settings
 from worker.config import ApiServerConfig, AWSConfig, DatabaseSettings, NotifyConfig, WorkerConfig
 from worker.orchestrator import JobOrchestrator
 from worker.repositories.engine import create_db_engine
@@ -77,8 +77,8 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
-# Log proxy settings early for debugging connectivity issues
-log_proxy_settings()
+# Configure and log proxy settings early for connectivity
+configure_proxy_settings()
 
 
 def run_api_server(port: int) -> None:
