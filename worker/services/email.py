@@ -11,6 +11,31 @@ from worker.models.job import ImpactAssessmentJob
 logger = logging.getLogger(__name__)
 
 
+def _log_http_error(e: HTTPError, context: str) -> None:
+    """Log detailed information from an HTTPError for debugging.
+
+    Args:
+        e: The HTTPError exception
+        context: Description of what operation failed (e.g., "job started email for job-123")
+    """
+    logger.error(f"Failed to send {context}: status={e.status_code}, message={e.message}")
+
+    # Log additional response details if available
+    if hasattr(e, "response") and e.response is not None:
+        try:
+            logger.error(f"Response body: {e.response.text}")
+            logger.error(f"Response headers: {dict(e.response.headers)}")
+        except Exception:
+            logger.error(f"Response object: {e.response}")
+
+    # Log any other useful attributes
+    for attr in ["errors", "content", "reason"]:
+        if hasattr(e, attr):
+            value = getattr(e, attr)
+            if value:
+                logger.error(f"HTTPError.{attr}: {value}")
+
+
 class EmailService:
     """Email notification service using GOV.UK Notify.
 
@@ -93,10 +118,7 @@ class EmailService:
             return True
 
         except HTTPError as e:
-            logger.error(
-                f"Failed to send job started email for {job.job_id}: "
-                f"status={e.status_code}, message={e.message}"
-            )
+            _log_http_error(e, f"job started email for {job.job_id}")
             return False
         except Exception as e:
             logger.exception(f"Unexpected error sending job started email for {job.job_id}: {e}")
@@ -160,10 +182,7 @@ class EmailService:
             return True
 
         except HTTPError as e:
-            logger.error(
-                f"Failed to send job completed email for {job_id}: "
-                f"status={e.status_code}, message={e.message}"
-            )
+            _log_http_error(e, f"job completed email for {job_id}")
             return False
         except Exception as e:
             logger.exception(f"Unexpected error sending job completed email for {job_id}: {e}")
@@ -219,10 +238,7 @@ class EmailService:
             return True
 
         except HTTPError as e:
-            logger.error(
-                f"Failed to send job failed email for {job.job_id}: "
-                f"status={e.status_code}, message={e.message}"
-            )
+            _log_http_error(e, f"job failed email for {job.job_id}")
             return False
         except Exception as e:
             logger.exception(f"Unexpected error sending job failed email for {job.job_id}: {e}")
